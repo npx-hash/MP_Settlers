@@ -12,12 +12,32 @@ namespace MPSettlers.Gameplay
         private PlacedWorldObject placedWorldObject;
 
         public string ItemId => itemId;
-        public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? itemId : displayName;
+
+        public string DisplayName =>
+            !string.IsNullOrWhiteSpace(displayName)
+                ? displayName
+                : !string.IsNullOrWhiteSpace(itemId)
+                    ? itemId
+                    : gameObject.name;
+
         public PickupInventoryType InventoryType => inventoryType;
 
         private void Awake()
         {
             placedWorldObject = GetComponent<PlacedWorldObject>();
+        }
+
+        private void OnValidate()
+        {
+            if (placedWorldObject == null)
+            {
+                placedWorldObject = GetComponent<PlacedWorldObject>();
+            }
+        }
+
+        public bool HasValidItemData()
+        {
+            return !string.IsNullOrWhiteSpace(itemId);
         }
 
         public void Initialize(BuildCatalogItem item)
@@ -28,9 +48,35 @@ namespace MPSettlers.Gameplay
             }
 
             placedWorldObject = GetComponent<PlacedWorldObject>();
-            itemId = item.id;
+
+            if (placedWorldObject != null && !string.IsNullOrWhiteSpace(placedWorldObject.CatalogItemId))
+                itemId = placedWorldObject.CatalogItemId;
+            else
+                itemId = item.id;
+
             displayName = item.displayName;
             inventoryType = item.pickupInventoryType;
+        }
+
+        public void ForceRuntimeItemId(string runtimeItemId)
+        {
+            if (!string.IsNullOrWhiteSpace(runtimeItemId))
+            {
+                itemId = runtimeItemId;
+            }
+        }
+
+        public void ForceRuntimeDisplayName(string runtimeDisplayName)
+        {
+            if (!string.IsNullOrWhiteSpace(runtimeDisplayName))
+            {
+                displayName = runtimeDisplayName;
+            }
+        }
+
+        public void ForceRuntimeInventoryType(PickupInventoryType runtimeInventoryType)
+        {
+            inventoryType = runtimeInventoryType;
         }
 
         public string GetInteractionLabel()

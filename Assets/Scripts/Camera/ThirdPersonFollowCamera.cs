@@ -208,6 +208,10 @@ namespace MPSettlers.CameraSystem
 
         private void UpdateRotation()
         {
+            // Skip look input while UI cursor mode is active (menu open)
+            if (uiCursorModeEnabled)
+                return;
+
             Vector2 lookInput = lookAction != null ? lookAction.ReadValue<Vector2>() : Vector2.zero;
             bool isPointerInput = lookAction != null && lookAction.activeControl != null &&
                                   lookAction.activeControl.device is Pointer;

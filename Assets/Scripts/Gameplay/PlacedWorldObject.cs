@@ -44,6 +44,13 @@ namespace MPSettlers.Gameplay
             cachedColliders = GetComponentsInChildren<Collider>(true);
         }
 
+        public void ForceRuntimeCatalogItemId(string runtimeCatalogItemId)
+        {
+            if (!string.IsNullOrWhiteSpace(runtimeCatalogItemId))
+            {
+                catalogItemId = runtimeCatalogItemId;
+            }
+        }
         public void SetRenderersEnabled(bool isEnabled)
         {
             foreach (Renderer rendererComponent in cachedRenderers)

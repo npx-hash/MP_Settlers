@@ -136,5 +136,6 @@ namespace MPSettlers.Gameplay
         public List<string> favoriteHotbarItemIds = new();
         public int selectedHotbarIndex;
         public List<PlacedObjectSaveData> placedObjects = new();
+        public EquipmentSaveData equipment = new EquipmentSaveData();
     }
 }
