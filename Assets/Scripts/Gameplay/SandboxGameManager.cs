@@ -928,7 +928,16 @@ namespace MPSettlers.Gameplay
                         ? Mathf.Clamp01(placedObject.renewableNodeState.growthNormalized)
                         : 1f;
 
-                    SpawnCatalogItem(item, placedObject.uniqueId, placedObject.position, placedObject.rotation, growth, registerForSave: true, placedByPlayer: placedObject.placedByPlayer);
+                    GameObject spawnedObject = SpawnCatalogItem(item, placedObject.uniqueId, placedObject.position, placedObject.rotation, growth, registerForSave: true, placedByPlayer: placedObject.placedByPlayer);
+
+                    if (spawnedObject != null && placedObject.pickupStackCount > 1)
+                    {
+                        InventoryPickup restoredPickup = spawnedObject.GetComponent<InventoryPickup>();
+                        if (restoredPickup != null)
+                        {
+                            restoredPickup.SetStackCount(placedObject.pickupStackCount);
+                        }
+                    }
 
                     if (IsContainerCatalogItem(item))
                     {
@@ -1049,6 +1058,7 @@ namespace MPSettlers.Gameplay
         private PlacedObjectSaveData CapturePlacedObjectState(PlacedWorldObject placedObject)
         {
             RenewableNode renewableNode = placedObject.GetComponent<RenewableNode>();
+            InventoryPickup pickup = placedObject.GetComponent<InventoryPickup>();
             return new PlacedObjectSaveData
             {
                 uniqueId = placedObject.UniqueId,
@@ -1057,7 +1067,8 @@ namespace MPSettlers.Gameplay
                 rotation = placedObject.transform.rotation,
                 placedByPlayer = placedObject.PlacedByPlayer,
                 renewableNodeState = renewableNode != null ? renewableNode.CaptureState() : null,
-                containerStorage = CaptureContainerStorage(placedObject)
+                containerStorage = CaptureContainerStorage(placedObject),
+                pickupStackCount = pickup != null ? pickup.StackCount : 0
             };
         }
 
@@ -1411,15 +1422,25 @@ namespace MPSettlers.Gameplay
                     break;
             }
 
-            // ── Remove from world ─────────────────────────────────────
-            PlacedWorldObject placedWorldObject = pickup.GetComponent<PlacedWorldObject>();
-            if (placedWorldObject != null)
+            // ── Decrement stack or remove from world ──────────────────
+            if (pickup.StackCount > 1)
             {
-                placedObjects.Remove(placedWorldObject.UniqueId);
+                // Stack has more items — decrement and keep the world object
+                pickup.DecrementStack();
+                int remaining = pickup.StackCount;
+                SetStatusMessage($"Collected 1 {displayName}. ({remaining} remaining on ground)");
             }
+            else
+            {
+                // Last item in stack (or non-stacked pickup) — remove from world
+                PlacedWorldObject placedWorldObject = pickup.GetComponent<PlacedWorldObject>();
+                if (placedWorldObject != null)
+                {
+                    placedObjects.Remove(placedWorldObject.UniqueId);
+                }
 
-            // Always destroy the pickup gameObject
-            Destroy(pickup.gameObject);
+                Destroy(pickup.gameObject);
+            }
 
             SaveWorld();
         }
@@ -3723,6 +3744,8 @@ namespace MPSettlers.Gameplay
             selectedInGameMenuTab = tabs[currentIndex];
         }
 
+        private const float DropStackMergeRadius = 5f;
+
         private void TryDropSelectedInventoryItem()
         {
             List<JournalInventoryEntry> entries = GetJournalInventoryEntries();
@@ -3786,7 +3809,20 @@ namespace MPSettlers.Gameplay
                 return;
             }
 
-            // Spawn the pickup on the ground in front of the player
+            // Try to merge with a nearby existing dropped pickup of the same item
+            if (playerTransform != null)
+            {
+                InventoryPickup nearbyStack = FindNearbyDroppedStack(itemId, playerTransform.position, DropStackMergeRadius);
+                if (nearbyStack != null)
+                {
+                    nearbyStack.AddToStack(1);
+                    SetStatusMessage($"Dropped {displayName}. (stack: {nearbyStack.StackCount})");
+                    SaveWorld();
+                    return;
+                }
+            }
+
+            // No nearby stack found — spawn a new pickup on the ground in front of the player
             if (playerTransform != null && catalogItem.prefab != null)
             {
                 Vector3 dropPosition = playerTransform.position + playerTransform.forward * 2f;
@@ -3805,6 +3841,34 @@ namespace MPSettlers.Gameplay
 
             SetStatusMessage($"Dropped {displayName}.");
             SaveWorld();
+        }
+
+        private InventoryPickup FindNearbyDroppedStack(string itemId, Vector3 origin, float radius)
+        {
+            float closestDistance = float.MaxValue;
+            InventoryPickup closest = null;
+
+            foreach (PlacedWorldObject placed in placedObjects.Values)
+            {
+                if (placed == null)
+                    continue;
+
+                InventoryPickup pickup = placed.GetComponent<InventoryPickup>();
+                if (pickup == null)
+                    continue;
+
+                if (!string.Equals(pickup.ItemId, itemId, StringComparison.Ordinal))
+                    continue;
+
+                float distance = Vector3.Distance(placed.transform.position, origin);
+                if (distance <= radius && distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closest = pickup;
+                }
+            }
+
+            return closest;
         }
 
         private void OpenInGameMenu()
@@ -7568,7 +7632,8 @@ namespace MPSettlers.Gameplay
             {
                 float holdPercent = GetInteractHoldPercent();
                 string progressText = holdPercent > 0f ? $" ({Mathf.RoundToInt(holdPercent * 100f)}%)" : string.Empty;
-                return $"Hold Interact to {targetedPickup.GetInteractionLabel()}{progressText}";
+                string stackHint = targetedPickup.StackCount > 1 ? $"  ({targetedPickup.StackCount} on ground)" : string.Empty;
+                return $"Hold Interact to {targetedPickup.GetInteractionLabel()}{progressText}{stackHint}";
             }
 
             if (targetedPlacedObject != null && TryGetContainerDefinition(targetedPlacedObject, out string containerLabel, out int capacity))

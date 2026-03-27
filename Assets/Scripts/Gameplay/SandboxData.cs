@@ -108,6 +108,7 @@ namespace MPSettlers.Gameplay
         public bool placedByPlayer;
         public RenewableNodeState renewableNodeState;
         public ContainerStorageSaveData containerStorage;
+        public int pickupStackCount;
     }
 
     [Serializable]

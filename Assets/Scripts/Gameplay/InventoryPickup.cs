@@ -8,10 +8,12 @@ namespace MPSettlers.Gameplay
         [SerializeField] private string itemId;
         [SerializeField] private string displayName;
         [SerializeField] private PickupInventoryType inventoryType;
+        [SerializeField] private int stackCount = 1;
 
         private PlacedWorldObject placedWorldObject;
 
         public string ItemId => itemId;
+        public int StackCount => stackCount;
 
         public string DisplayName =>
             !string.IsNullOrWhiteSpace(displayName)
@@ -79,8 +81,26 @@ namespace MPSettlers.Gameplay
             inventoryType = runtimeInventoryType;
         }
 
+        public void AddToStack(int amount)
+        {
+            stackCount = Mathf.Max(1, stackCount + amount);
+        }
+
+        public bool DecrementStack()
+        {
+            stackCount--;
+            return stackCount <= 0;
+        }
+
+        public void SetStackCount(int count)
+        {
+            stackCount = Mathf.Max(1, count);
+        }
+
         public string GetInteractionLabel()
         {
+            if (stackCount > 1)
+                return $"Collect {DisplayName} x{stackCount}";
             return $"Collect {DisplayName}";
         }
     }
