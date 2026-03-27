@@ -178,6 +178,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 355312524381552382, guid: b84d7ca3927758646a65731cc107aa76, type: 3}
       insertIndex: -1
       addedObject: {fileID: 733248442}
+    - targetCorrespondingSourceObject: {fileID: 355312524381552382, guid: b84d7ca3927758646a65731cc107aa76, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 733248447}
   m_SourcePrefab: {fileID: 100100000, guid: b84d7ca3927758646a65731cc107aa76, type: 3}
 --- !u!1001 &227984292
 PrefabInstance:
@@ -419,6 +422,63 @@ MonoBehaviour:
   collisionRadius: 0.2
   collisionPadding: 0.1
   lockCursorOnEnable: 1
+--- !u!1001 &391859091
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 1271865576400040978, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_Name
+      value: Pepper
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.9133649
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.070240326
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -4.1408725
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1940281421854633640, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 6887084a4d02b064fbd55a21a809634f, type: 3}
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -605,6 +665,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 4865309214770636011, guid: 45804eb2722b83845adbcf2d72da12dd, type: 3}
       insertIndex: -1
       addedObject: {fileID: 913882537}
+    - targetCorrespondingSourceObject: {fileID: 4865309214770636011, guid: 45804eb2722b83845adbcf2d72da12dd, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 913882542}
   m_SourcePrefab: {fileID: 100100000, guid: 45804eb2722b83845adbcf2d72da12dd, type: 3}
 --- !u!1001 &563910320
 PrefabInstance:
@@ -728,6 +791,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 5458737265024032779, guid: ea816f7cece47574da091aaf86ab56f4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1359970970}
+    - targetCorrespondingSourceObject: {fileID: 5458737265024032779, guid: ea816f7cece47574da091aaf86ab56f4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1359970975}
   m_SourcePrefab: {fileID: 100100000, guid: ea816f7cece47574da091aaf86ab56f4, type: 3}
 --- !u!1001 &663564132
 PrefabInstance:
@@ -788,6 +854,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1826543164433107775, guid: 637a26567ae08674796cb9ce5c55c4d8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1851281770}
+    - targetCorrespondingSourceObject: {fileID: 1826543164433107775, guid: 637a26567ae08674796cb9ce5c55c4d8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1851281775}
   m_SourcePrefab: {fileID: 100100000, guid: 637a26567ae08674796cb9ce5c55c4d8, type: 3}
 --- !u!1001 &689617166
 PrefabInstance:
@@ -848,6 +917,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 8203073568141072114, guid: 6cd1ac9652a50da4485a86492f47c63d, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1905151875}
+    - targetCorrespondingSourceObject: {fileID: 8203073568141072114, guid: 6cd1ac9652a50da4485a86492f47c63d, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1905151880}
   m_SourcePrefab: {fileID: 100100000, guid: 6cd1ac9652a50da4485a86492f47c63d, type: 3}
 --- !u!1 &733248441 stripped
 GameObject:
@@ -877,6 +949,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &733248447
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 733248441}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -954,6 +1041,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &913882542
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 913882536}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1 &923161149 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8591273635324488586, guid: 82f1e40c0cf7c5048a41bfa78b10c9d9, type: 3}
@@ -1025,6 +1127,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &1041850739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1041850733}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1 &1359970965 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5458737265024032779, guid: ea816f7cece47574da091aaf86ab56f4, type: 3}
@@ -1053,6 +1170,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &1359970975
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1359970965}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1001 &1447554723
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1212,6 +1344,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 3317823749142253822, guid: d4958227484245e4592c41ab2c02ad22, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1041850734}
+    - targetCorrespondingSourceObject: {fileID: 3317823749142253822, guid: d4958227484245e4592c41ab2c02ad22, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1041850739}
   m_SourcePrefab: {fileID: 100100000, guid: d4958227484245e4592c41ab2c02ad22, type: 3}
 --- !u!1 &1823181369 stripped
 GameObject:
@@ -1355,7 +1490,7 @@ MonoBehaviour:
   isWeapon: 0
   isArmor: 1
   isAmmo: 0
-  weaponType: 0
+  weaponType: 7
   armorSlot: 2
   ammoType: 0
   ammoQuantity: 0
@@ -1363,6 +1498,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &1851281775
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1851281769}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1 &1905151870 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8203073568141072114, guid: 6cd1ac9652a50da4485a86492f47c63d, type: 3}
@@ -1391,6 +1541,21 @@ MonoBehaviour:
   mountPositionOffset: {x: 0, y: 0, z: 0}
   mountRotationOffset: {x: 0, y: 0, z: 0}
   mountScaleMultiplier: {x: 0, y: 0, z: 0}
+--- !u!114 &1905151880
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1905151870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6331993eaecfa3349993e1833eaee15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MPSettlers.Gameplay.InventoryPickup
+  itemId: 
+  displayName: 
+  inventoryType: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1407,3 +1572,4 @@ SceneRoots:
   - {fileID: 563910320}
   - {fileID: 663564132}
   - {fileID: 115899865}
+  - {fileID: 391859091}

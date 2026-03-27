@@ -107,6 +107,17 @@ namespace MPSettlers.Gameplay
         public Quaternion rotation;
         public bool placedByPlayer;
         public RenewableNodeState renewableNodeState;
+        public ContainerStorageSaveData containerStorage;
+    }
+
+    [Serializable]
+    public class ContainerStorageSaveData
+    {
+        public int wood;
+        public int stone;
+        public int food;
+        public List<InventoryEntryData> storedFoodItems = new();
+        public List<InventoryEntryData> storedWeapons = new();
     }
 
     [Serializable]
@@ -124,6 +135,49 @@ namespace MPSettlers.Gameplay
     }
 
     [Serializable]
+    public class StorageSaveData
+    {
+        public int wood;
+        public int stone;
+        public int food;
+        public List<InventoryEntryData> storedFoodItems = new();
+        public List<InventoryEntryData> storedWeapons = new();
+    }
+
+    [Serializable]
+    public class CraftingIngredient
+    {
+        public int wood;
+        public int stone;
+        public int food;
+        public string requiredItemId;
+        public int requiredItemCount;
+
+        public string ToDisplayString()
+        {
+            List<string> parts = new();
+            if (wood > 0) parts.Add($"{wood} wood");
+            if (stone > 0) parts.Add($"{stone} stone");
+            if (food > 0) parts.Add($"{food} food");
+            if (!string.IsNullOrWhiteSpace(requiredItemId) && requiredItemCount > 0)
+                parts.Add($"{requiredItemCount}x item");
+            return parts.Count == 0 ? "Free" : string.Join(", ", parts);
+        }
+    }
+
+    [Serializable]
+    public class CraftingRecipe
+    {
+        public string id;
+        public string displayName;
+        public string description;
+        public string resultItemId;
+        public int resultCount = 1;
+        public CraftingIngredient cost = new();
+        public bool resultIsStructure;
+    }
+
+    [Serializable]
     public class WorldSaveData
     {
         public int wood;
@@ -137,5 +191,6 @@ namespace MPSettlers.Gameplay
         public int selectedHotbarIndex;
         public List<PlacedObjectSaveData> placedObjects = new();
         public EquipmentSaveData equipment = new EquipmentSaveData();
+        public StorageSaveData storage = new StorageSaveData();
     }
 }

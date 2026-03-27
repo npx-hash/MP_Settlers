@@ -117,7 +117,17 @@ namespace MPSettlers.Gameplay
 
             if (localGripDir.sqrMagnitude > 0.001f)
             {
-                Quaternion gripRot = Quaternion.FromToRotation(Vector3.up, localGripDir);
+                // Twist around the grip axis is ambiguous when only aligning a
+                // single vector. Use a stable forward reference so mounts
+                // settle naturally in the palm.
+                Vector3 desiredUp = localGripDir.normalized;
+                Vector3 desiredForward = Vector3.ProjectOnPlane(Vector3.forward, desiredUp);
+                if (desiredForward.sqrMagnitude < 0.0001f)
+                {
+                    desiredForward = Vector3.ProjectOnPlane(Vector3.right, desiredUp);
+                }
+
+                Quaternion gripRot = Quaternion.LookRotation(desiredForward, desiredUp);
                 rotationOffset = gripRot.eulerAngles;
             }
         }

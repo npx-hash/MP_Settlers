@@ -381,6 +381,25 @@ namespace MPSettlers.CameraSystem
             }
         }
 
+        public float MouseSensitivity => mouseSensitivity;
+        public bool InvertY => invertY;
+        public float Distance => distance;
+        public float FollowSmoothTime => followSmoothTime;
+        public float RotationSmoothSpeed => rotationSmoothSpeed;
+
+        public void ApplyLookSettings(float newMouseSensitivity, bool newInvertY)
+        {
+            mouseSensitivity = Mathf.Max(0.001f, newMouseSensitivity);
+            invertY = newInvertY;
+        }
+
+        public void ApplyCameraDistance(float newDistance)
+        {
+            distance = Mathf.Max(0.5f, newDistance);
+            // Keep minDistance in a valid range relative to the resolved distance.
+            minDistance = Mathf.Clamp(minDistance, 0.25f, distance);
+        }
+
         public void ApplyRuntimeTuning(float newFollowSmoothTime, float newRotationSmoothSpeed)
         {
             followSmoothTime = Mathf.Max(0.01f, newFollowSmoothTime);

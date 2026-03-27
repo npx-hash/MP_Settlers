@@ -121,6 +121,9 @@ namespace MPSettlers.Gameplay
         private bool pendingMenuClose;
         private bool pendingInGameMenuToggle;
         private bool pendingInGameMenuClose;
+        private bool escMenuOpen;
+        private bool pendingEscMenuOpen;
+        private bool pendingEscMenuClose;
         private string selectedInventoryItemId;
         private bool placementActive;
         private bool placementSnapEnabled = true;
@@ -147,8 +150,49 @@ namespace MPSettlers.Gameplay
         private InGameMenuTab selectedInGameMenuTab = InGameMenuTab.Overview;
         private bool showCrosshair = true;
         private bool showActionHints = true;
-        private bool calmCameraEnabled = true;
+        private float settingsUiScaleMultiplier = 1f;
+        private bool showFps = false;
+
+        private enum CameraFeelMode
+        {
+            Calm,
+            Normal,
+            Responsive
+        }
+
+        private CameraFeelMode cameraFeelMode = CameraFeelMode.Calm;
+        private float cameraSmoothingMultiplier = 1f; // multiplier applied to the preset
+
+        private bool pauseGameWhenJournalOpen;
+        private float timeScaleBeforePause = 1f;
+
+        // Camera look controls (cached from followCamera when opening the settings tab).
+        private float cameraMouseSensitivity = 0.12f;
+        private bool cameraInvertY;
+        private float cameraDistance = 5f;
+        private bool settingsCameraCacheInitialized;
         private Vector2 inventoryGridScroll;
+
+        // ── World container storage (placed object only) ──────────────
+        private const int BarrelStorageCapacity = 20;
+        private const int BoxStorageCapacity = 30;
+        private readonly Dictionary<string, ContainerRuntimeStorage> containerStorageByObjectId = new(StringComparer.Ordinal);
+        private PlacedWorldObject activeContainerObject;
+        private bool containerStorageOpen;
+        private Vector2 containerPlayerItemsScroll;
+        private Vector2 containerStoredItemsScroll;
+        private int containerTransferAmount = 1;
+
+        // ── Crafting ─────────────────────────────────────────────────
+        private List<CraftingRecipe> craftingRecipes;
+        private int selectedRecipeIndex;
+        private Vector2 craftingScrollPos;
+
+        // ── Seed / Farming ──────────────────────────────────────────
+        // Maps virtual seed item IDs to the crop catalog ID they produce when planted.
+        private readonly Dictionary<string, string> seedToCropMap = new(StringComparer.Ordinal);
+        private bool plantingMode;
+        private string plantingSeedId;
 
         private GUIStyle windowStyle;
         private GUIStyle headingStyle;
@@ -183,7 +227,7 @@ namespace MPSettlers.Gameplay
         private GUIStyle hudCardStyle;
         private GUIStyle escHintStyle;
         private float currentUiScale = -1f;
-        private bool IsAnyMenuOpen => buildPanelOpen || inGameMenuOpen;
+        private bool IsAnyMenuOpen => buildPanelOpen || inGameMenuOpen || escMenuOpen || containerStorageOpen;
 
         private Texture2D panelTexture;
         private Texture2D buttonTexture;
@@ -250,42 +294,42 @@ namespace MPSettlers.Gameplay
                 float width = Mathf.Max(640f, screenWidth);
                 float height = Mathf.Max(360f, screenHeight);
 
-                margin = Mathf.Clamp(Mathf.Min(width, height) * 0.015f, 10f, 20f);
-                gutter = Mathf.Clamp(margin * 0.65f, 6f, 12f);
+                margin = Mathf.Clamp(Mathf.Min(width, height) * 0.018f, 10f, 28f);
+                gutter = Mathf.Clamp(margin * 0.6f, 6f, 16f);
 
-                float playerWidth = Mathf.Clamp(width * 0.18f, 190f, 250f);
-                float playerHeight = Mathf.Clamp(height * 0.12f, 88f, 112f);
+                float playerWidth = Mathf.Clamp(width * 0.17f, 190f, 340f);
+                float playerHeight = Mathf.Clamp(height * 0.13f, 88f, 148f);
                 playerPanelRect = new Rect(margin, margin, playerWidth, playerHeight);
 
-                float helpWidth = Mathf.Clamp(width * 0.2f, 210f, 280f);
-                float helpHeight = Mathf.Clamp(height * 0.09f, 72f, 92f);
+                float helpWidth = Mathf.Clamp(width * 0.18f, 210f, 360f);
+                float helpHeight = Mathf.Clamp(height * 0.095f, 72f, 118f);
                 helpPanelRect = new Rect(margin, playerPanelRect.yMax + gutter, helpWidth, helpHeight);
 
-                float modeWidth = Mathf.Clamp(width * 0.22f, 220f, 290f);
-                float modeHeight = Mathf.Clamp(height * 0.11f, 84f, 104f);
+                float modeWidth = Mathf.Clamp(width * 0.20f, 220f, 380f);
+                float modeHeight = Mathf.Clamp(height * 0.11f, 84f, 132f);
 
-                float hotbarSpacing = Mathf.Clamp(width * 0.004f, 4f, 8f);
-                hotbarWidth = Mathf.Min(width - (margin * 2f), 960f);
-                slotWidth = Mathf.Clamp((hotbarWidth - (hotbarSpacing * (HotbarSlotCount - 1))) / HotbarSlotCount, 46f, 76f);
-                slotHeight = Mathf.Clamp(height * 0.065f, 58f, 76f);
-                resourceBadgeHeight = Mathf.Clamp(height * 0.03f, 24f, 30f);
-                resourceBadgeWidth = Mathf.Max(74f, (hotbarWidth - (hotbarSpacing * 4f)) / 5f);
-                float hotbarHeight = resourceBadgeHeight + gutter + slotHeight + 12f;
+                float hotbarSpacing = Mathf.Clamp(width * 0.005f, 4f, 10f);
+                hotbarWidth = Mathf.Min(width - (margin * 2f), 1200f);
+                slotWidth = Mathf.Clamp((hotbarWidth - (hotbarSpacing * (HotbarSlotCount - 1))) / HotbarSlotCount, 48f, 96f);
+                slotHeight = Mathf.Clamp(height * 0.072f, 58f, 96f);
+                resourceBadgeHeight = Mathf.Clamp(height * 0.032f, 24f, 36f);
+                resourceBadgeWidth = Mathf.Max(78f, (hotbarWidth - (hotbarSpacing * 4f)) / 5f);
+                float hotbarHeight = resourceBadgeHeight + gutter + slotHeight + 14f;
                 hotbarRect = new Rect((width - hotbarWidth) * 0.5f, height - hotbarHeight - margin, hotbarWidth, hotbarHeight);
 
-                float contextWidth = Mathf.Min(width - (margin * 2f), hotbarWidth);
-                float contextHeight = Mathf.Clamp(height * 0.08f, 52f, 84f);
+                float contextWidth = Mathf.Min(width - (margin * 2f), hotbarWidth * 0.85f);
+                float contextHeight = Mathf.Clamp(height * 0.075f, 52f, 88f);
                 contextRect = new Rect((width - contextWidth) * 0.5f, hotbarRect.y - contextHeight - gutter, contextWidth, contextHeight);
 
-                float statusWidth = Mathf.Min(width - (margin * 2f), hotbarWidth * 0.8f);
-                float statusHeight = Mathf.Clamp(height * 0.045f, 34f, 48f);
+                float statusWidth = Mathf.Min(width - (margin * 2f), hotbarWidth * 0.7f);
+                float statusHeight = Mathf.Clamp(height * 0.045f, 34f, 52f);
                 statusRect = new Rect((width - statusWidth) * 0.5f, contextRect.y - statusHeight - gutter, statusWidth, statusHeight);
 
                 float reservedBottom = (height - contextRect.y) + margin;
-                float buildWidth = Mathf.Clamp(width * 0.25f, 310f, 430f);
+                float buildWidth = Mathf.Clamp(width * 0.24f, 310f, 520f);
                 buildWidth = Mathf.Min(buildWidth, width - (margin * 2f));
                 float availableHeight = height - reservedBottom - margin;
-                float buildHeight = Mathf.Clamp(availableHeight, 260f, 680f);
+                float buildHeight = Mathf.Clamp(availableHeight, 260f, 780f);
                 buildPanelRect = new Rect(width - buildWidth - margin, margin, buildWidth, buildHeight);
 
                 float centeredModeX = (width - modeWidth) * 0.5f;
@@ -294,8 +338,17 @@ namespace MPSettlers.Gameplay
                 float resolvedModeX = Mathf.Clamp(centeredModeX, minModeX, Mathf.Max(minModeX, maxModeX));
                 modePanelRect = new Rect(resolvedModeX, margin, modeWidth, modeHeight);
 
-                buildItemHeight = Mathf.Clamp(height * 0.055f, 44f, 56f);
+                buildItemHeight = Mathf.Clamp(height * 0.055f, 44f, 62f);
             }
+        }
+
+        private sealed class ContainerRuntimeStorage
+        {
+            public int wood;
+            public int stone;
+            public int food;
+            public readonly Dictionary<string, int> storedFoodItems = new(StringComparer.Ordinal);
+            public readonly Dictionary<string, int> storedWeapons = new(StringComparer.Ordinal);
         }
 
         private void Awake()
@@ -314,6 +367,7 @@ namespace MPSettlers.Gameplay
             CacheActions();
             wasGrounded = playerMovement != null && playerMovement.IsGrounded;
             LoadOrInitializeWorld();
+            InitializeCraftingRecipes();
             EnsureCameraTarget();
         }
 
@@ -344,6 +398,15 @@ namespace MPSettlers.Gameplay
             UpdateTargetedObject();
             UpdateWeaponAnimation();
             HandleGlobalShortcuts();
+
+            if (escMenuOpen)
+                return;
+
+            if (containerStorageOpen)
+            {
+                HandleContainerStorageNavigation();
+                return;
+            }
 
             if (inGameMenuOpen)
             {
@@ -383,7 +446,17 @@ namespace MPSettlers.Gameplay
             CaptureGuiShortcutFallbacks();
             EnsureGuiStyles();
             DrawCrosshair();
-            if (inGameMenuOpen)
+            if (escMenuOpen)
+            {
+                DrawHud();
+                DrawHotbarHud();
+                DrawEscMenu();
+            }
+            else if (containerStorageOpen)
+            {
+                DrawContainerStoragePanel();
+            }
+            else if (inGameMenuOpen)
             {
                 DrawInGameMenu();
             }
@@ -471,7 +544,7 @@ namespace MPSettlers.Gameplay
         {
             if (followCamera != null)
             {
-                followCamera.SetUiCursorMode(pointerMode || inGameMenuOpen);
+                followCamera.SetUiCursorMode(pointerMode || inGameMenuOpen || escMenuOpen);
             }
         }
 
@@ -540,16 +613,31 @@ namespace MPSettlers.Gameplay
                 return;
             }
 
-            if (buildPanelOpen && currentEvent.keyCode == KeyCode.Escape)
+            if (currentEvent.keyCode == KeyCode.Escape)
             {
-                pendingMenuClose = true;
-                currentEvent.Use();
-                return;
-            }
+                if (inGameMenuOpen)
+                {
+                    pendingInGameMenuClose = true;
+                    currentEvent.Use();
+                    return;
+                }
 
-            if (inGameMenuOpen && currentEvent.keyCode == KeyCode.Escape)
-            {
-                pendingInGameMenuClose = true;
+                if (buildPanelOpen)
+                {
+                    pendingMenuClose = true;
+                    currentEvent.Use();
+                    return;
+                }
+
+                if (escMenuOpen)
+                {
+                    pendingEscMenuClose = true;
+                    currentEvent.Use();
+                    return;
+                }
+
+                // No menu open — open the esc menu
+                pendingEscMenuOpen = true;
                 currentEvent.Use();
             }
         }
@@ -666,6 +754,8 @@ namespace MPSettlers.Gameplay
                 categoryItems.Sort((left, right) => string.Compare(left.displayName, right.displayName, StringComparison.Ordinal));
             }
 
+            RegisterSeedItems();
+
             int previousIndex = selectedIndex;
             EnsureSelectionInRange();
             if (selectedIndex != previousIndex)
@@ -677,6 +767,54 @@ namespace MPSettlers.Gameplay
             {
                 EnsureGhost(GetSelectedItem());
             }
+        }
+
+        private void RegisterSeedItems()
+        {
+            seedToCropMap.Clear();
+
+            // Define seed→crop mappings. Each seed is a virtual inventory item
+            // that, when planted, spawns its associated crop catalog entry at growth 0.
+            RegisterSeed("seed:tomato", "Tomato Seeds", "farm:TomatoPlant_01");
+            RegisterSeed("seed:cabbage", "Cabbage Seeds", "farm:Cabbage_01");
+        }
+
+        private void RegisterSeed(string seedId, string seedDisplayName, string cropCatalogId)
+        {
+            if (!catalogLookup.ContainsKey(cropCatalogId))
+                return;
+
+            seedToCropMap[seedId] = cropCatalogId;
+
+            // Register a virtual catalog entry for the seed so GetDisplayNameForItemId works
+            // and inventory UI can show it properly. Seeds are food-type inventory items.
+            if (!catalogLookup.ContainsKey(seedId))
+            {
+                BuildCatalogItem cropItem = catalogLookup[cropCatalogId];
+                BuildCatalogItem seedItem = new()
+                {
+                    id = seedId,
+                    prefabName = seedId,
+                    displayName = seedDisplayName,
+                    category = BuildCategory.Farm,
+                    kind = ItemKind.Pickup,
+                    prefab = cropItem.prefab, // reuse crop prefab for icon/ghost
+                    cost = new BuildCost(),
+                    pickupInventoryType = PickupInventoryType.Food,
+                    renewableResourceType = ResourceType.Food,
+                    renewableYieldAmount = 0,
+                    renewableRegrowSeconds = 0f,
+                    renewableVisualMode = RenewableVisualMode.Crop,
+                    showGrowthLabel = false,
+                    seedOnNewWorld = false
+                };
+                catalogLookup[seedId] = seedItem;
+            }
+        }
+
+        private bool IsSeedItem(string itemId)
+        {
+            return !string.IsNullOrWhiteSpace(itemId) && seedToCropMap.ContainsKey(itemId);
         }
 
         private void LoadOrInitializeWorld()
@@ -738,6 +876,8 @@ namespace MPSettlers.Gameplay
             RestoreInventory(storedWeaponInventory, safeData.inventory?.storedWeapons);
             RestoreHotbar(safeData.favoriteHotbarItemIds);
 
+            containerStorageByObjectId.Clear();
+
             foreach (string key in EquipSlotKey.All)
                 equippedSlots[key] = new EquippedSlot();
 
@@ -789,6 +929,12 @@ namespace MPSettlers.Gameplay
                         : 1f;
 
                     SpawnCatalogItem(item, placedObject.uniqueId, placedObject.position, placedObject.rotation, growth, registerForSave: true, placedByPlayer: placedObject.placedByPlayer);
+
+                    if (IsContainerCatalogItem(item))
+                    {
+                        ContainerRuntimeStorage runtimeStorage = GetOrCreateContainerStorage(placedObject.uniqueId);
+                        RestoreContainerStorage(runtimeStorage, placedObject.containerStorage);
+                    }
                 }
             }
 
@@ -894,6 +1040,8 @@ namespace MPSettlers.Gameplay
                     .ToList()
             };
 
+            saveData.storage = new StorageSaveData();
+
             string json = JsonUtility.ToJson(saveData, true);
             File.WriteAllText(GetSavePath(), json);
         }
@@ -908,7 +1056,8 @@ namespace MPSettlers.Gameplay
                 position = placedObject.transform.position,
                 rotation = placedObject.transform.rotation,
                 placedByPlayer = placedObject.PlacedByPlayer,
-                renewableNodeState = renewableNode != null ? renewableNode.CaptureState() : null
+                renewableNodeState = renewableNode != null ? renewableNode.CaptureState() : null,
+                containerStorage = CaptureContainerStorage(placedObject)
             };
         }
 
@@ -919,7 +1068,9 @@ namespace MPSettlers.Gameplay
 
         private void ClearRuntimeObjects()
         {
+            CloseContainerStorage();
             placedObjects.Clear();
+            containerStorageByObjectId.Clear();
             foreach (PlacedWorldObject placedWorldObject in FindObjectsByType<PlacedWorldObject>(FindObjectsInactive.Include))
             {
                 if (placedWorldObject != null)
@@ -938,6 +1089,12 @@ namespace MPSettlers.Gameplay
             TrySeed("Rock_04", origin + new Vector3(-6f, 0f, -8f), 30f);
             TrySeed("TomatoPlant_01", origin + new Vector3(4f, 0f, 11f), 0f);
             TrySeed("Cabbage_01", origin + new Vector3(-4f, 0f, 11f), 0f);
+
+            // Give player starter seeds so they can begin farming immediately
+            if (seedToCropMap.ContainsKey("seed:tomato"))
+                AddInventoryCount(storedFoodInventory, "seed:tomato", 3);
+            if (seedToCropMap.ContainsKey("seed:cabbage"))
+                AddInventoryCount(storedFoodInventory, "seed:cabbage", 3);
         }
 
         private void SeedExpandedEnvironment()
@@ -1170,6 +1327,11 @@ namespace MPSettlers.Gameplay
             if (targetedPickup != null)
             {
                 CollectPickup(targetedPickup);
+                return;
+            }
+
+            if (targetedPlacedObject != null && TryOpenContainerStorage(targetedPlacedObject))
+            {
                 return;
             }
 
@@ -1796,32 +1958,31 @@ namespace MPSettlers.Gameplay
                     ? HumanoidBoneNames.ForSlotKey(slotKey)
                     : def.overrideBoneName;
 
-                // Use the def offsets; if they're zero, apply hand defaults
-                // so the weapon sits in the palm rather than the wrist joint.
+                // Base mount pose comes from current rig palm + grip alignment.
+                // Per-item EquipmentDefinition offsets are fine-tuning additions
+                // on top of that dynamic base (instead of replacing it).
                 Vector3 posOff = def.mountPositionOffset;
                 Vector3 rotOff = def.mountRotationOffset;
 
-                if (posOff == Vector3.zero && rotOff == Vector3.zero)
+                if (slotKey == EquipSlotKey.Weapon || slotKey == EquipSlotKey.Shield)
                 {
-                    if (slotKey == EquipSlotKey.Weapon)
-                    {
-                        // Dynamic palm + grip-aligned rotation
-                        weaponMount.GetPalmOffsetAndRotation(boneName, out posOff, out rotOff);
-                        if (posOff == Vector3.zero)
-                        {
-                            posOff = EquipmentInfo.FallbackRightHandPosition;
-                            rotOff = EquipmentInfo.FallbackRightHandRotation;
-                        }
-                    }
-                    else if (slotKey == EquipSlotKey.Shield)
-                    {
-                        weaponMount.GetPalmOffsetAndRotation(boneName, out posOff, out rotOff);
-                        if (posOff == Vector3.zero)
-                        {
-                            posOff = EquipmentInfo.FallbackLeftHandPosition;
-                            rotOff = EquipmentInfo.FallbackLeftHandRotation;
-                        }
-                    }
+                    weaponMount.GetPalmOffsetAndRotation(
+                        boneName,
+                        out Vector3 palmPosOff,
+                        out Vector3 palmRotOff);
+
+                    if (palmPosOff == Vector3.zero)
+                        palmPosOff = slotKey == EquipSlotKey.Weapon
+                            ? EquipmentInfo.FallbackRightHandPosition
+                            : EquipmentInfo.FallbackLeftHandPosition;
+
+                    if (palmRotOff == Vector3.zero)
+                        palmRotOff = slotKey == EquipSlotKey.Weapon
+                            ? EquipmentInfo.FallbackRightHandRotation
+                            : EquipmentInfo.FallbackLeftHandRotation;
+
+                    posOff = palmPosOff + def.mountPositionOffset;
+                    rotOff = palmRotOff + def.mountRotationOffset;
                 }
 
                 GameObject instance = weaponMount.MountOnBone(
@@ -1870,12 +2031,20 @@ namespace MPSettlers.Gameplay
 
             if (inGameMenuTogglePressed)
             {
+                if (containerStorageOpen)
+                {
+                    CloseContainerStorage();
+                    return;
+                }
+
                 if (inGameMenuOpen)
                 {
                     CloseInGameMenu();
                 }
                 else
                 {
+                    if (escMenuOpen)
+                        CloseEscMenu();
                     OpenInGameMenu();
                 }
             }
@@ -1886,6 +2055,34 @@ namespace MPSettlers.Gameplay
                 CloseInGameMenu();
                 return;
             }
+
+            // ESC menu: close if open, open if nothing else is open
+            bool escPressed = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+            if (containerStorageOpen && escPressed)
+            {
+                CloseContainerStorage();
+                return;
+            }
+
+            if (escMenuOpen && (ConsumePendingShortcut(ref pendingEscMenuClose) || escPressed))
+            {
+                CloseEscMenu();
+                return;
+            }
+
+            if (!IsAnyMenuOpen && !placementActive && !deleteMode &&
+                (ConsumePendingShortcut(ref pendingEscMenuOpen) || escPressed))
+            {
+                OpenEscMenu();
+                return;
+            }
+
+            // Consume stale pending esc shortcuts that didn't apply
+            ConsumePendingShortcut(ref pendingEscMenuOpen);
+            ConsumePendingShortcut(ref pendingEscMenuClose);
+
+            if (escMenuOpen)
+                return;
 
             bool buildTogglePressed = ConsumePendingShortcut(ref pendingBuildToggle) ||
                                       (Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame);
@@ -1937,6 +2134,12 @@ namespace MPSettlers.Gameplay
             if (Keyboard.current.hKey.wasPressedThisFrame)
             {
                 ConsumeStoredFood();
+            }
+
+            if (!placementActive && !buildPanelOpen && !inGameMenuOpen && !escMenuOpen
+                && Keyboard.current.pKey.wasPressedThisFrame)
+            {
+                TryBeginPlantingFirstSeed();
             }
 
             if (buildPanelOpen && (TryGetPreviousPressedThisFrame() || TryGetNextPressedThisFrame()))
@@ -2188,6 +2391,13 @@ namespace MPSettlers.Gameplay
                 return;
             }
 
+            // If the hotbar item is a seed, enter planting mode instead of build placement
+            if (IsSeedItem(item.id))
+            {
+                BeginPlantingSeed(item.id);
+                return;
+            }
+
             SelectCatalogItemById(item.id);
         }
 
@@ -2236,12 +2446,18 @@ namespace MPSettlers.Gameplay
 
             if (!pointerMode && TryGetAttackPressedThisFrame())
             {
-                TryPlaceCurrentSelection();
+                if (plantingMode)
+                    TryPlantSeed();
+                else
+                    TryPlaceCurrentSelection();
             }
 
             if (!pointerMode && TryGetSubmitPressedThisFrame())
             {
-                TryPlaceCurrentSelection();
+                if (plantingMode)
+                    TryPlantSeed();
+                else
+                    TryPlaceCurrentSelection();
             }
         }
 
@@ -2280,6 +2496,7 @@ namespace MPSettlers.Gameplay
             }
 
             RefundCost(item.cost);
+            containerStorageByObjectId.Remove(targetedPlacedObject.UniqueId);
             placedObjects.Remove(targetedPlacedObject.UniqueId);
             Destroy(targetedPlacedObject.gameObject);
             SaveWorld();
@@ -2434,8 +2651,140 @@ namespace MPSettlers.Gameplay
         private void CancelPlacement()
         {
             placementActive = false;
+            plantingMode = false;
+            plantingSeedId = null;
             CleanupGhost();
             pointerMode = false;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  Seed Planting
+        // ══════════════════════════════════════════════════════════════
+
+        private void BeginPlantingSeed(string seedId)
+        {
+            if (!seedToCropMap.TryGetValue(seedId, out string cropId))
+                return;
+            if (!catalogLookup.TryGetValue(cropId, out BuildCatalogItem cropItem))
+                return;
+
+            // Check player has seeds
+            if (!storedFoodInventory.TryGetValue(seedId, out int seedCount) || seedCount <= 0)
+            {
+                SetStatusMessage("No seeds remaining.");
+                return;
+            }
+
+            // Enter placement mode with the crop as ghost preview
+            plantingMode = true;
+            plantingSeedId = seedId;
+            placementActive = true;
+            deleteMode = false;
+            buildPanelOpen = false;
+            pointerMode = false;
+            placementYaw = 0f;
+
+            // Use crop item for the ghost
+            CleanupGhost();
+            EnsureGhost(cropItem);
+            SetStatusMessage($"Select a spot to plant {GetDisplayNameForItemId(seedId)}.");
+        }
+
+        private void TryPlantSeed()
+        {
+            if (!plantingMode || string.IsNullOrWhiteSpace(plantingSeedId))
+                return;
+
+            if (!seedToCropMap.TryGetValue(plantingSeedId, out string cropId))
+            {
+                SetStatusMessage("Unknown seed type.");
+                CancelPlacement();
+                return;
+            }
+
+            if (!catalogLookup.TryGetValue(cropId, out BuildCatalogItem cropItem))
+            {
+                SetStatusMessage("Crop not found in catalog.");
+                CancelPlacement();
+                return;
+            }
+
+            if (!placementHasValidTarget)
+            {
+                SetStatusMessage("Move the placement farther from the player.");
+                return;
+            }
+
+            // Consume 1 seed
+            if (!storedFoodInventory.TryGetValue(plantingSeedId, out int seedCount) || seedCount <= 0)
+            {
+                SetStatusMessage("No seeds remaining.");
+                CancelPlacement();
+                return;
+            }
+
+            RemoveInventoryCount(storedFoodInventory, plantingSeedId, 1);
+
+            // Spawn the crop at growth 0 — it will grow over time via RenewableNode.Update()
+            GameObject planted = SpawnCatalogItem(
+                cropItem,
+                Guid.NewGuid().ToString("N"),
+                pendingPlacementPosition,
+                pendingPlacementRotation,
+                0f, // seedling — growth starts at zero
+                registerForSave: true,
+                placedByPlayer: true,
+                alignToGround: true);
+
+            if (planted == null)
+            {
+                // Refund seed on failure
+                AddInventoryCount(storedFoodInventory, plantingSeedId, 1);
+                SetStatusMessage("Failed to plant seed.");
+                CancelPlacement();
+                return;
+            }
+
+            // Enable growth label so the player can see progress
+            RenewableNode node = planted.GetComponent<RenewableNode>();
+            if (node != null)
+            {
+                // showGrowthLabel is already set from the catalog item, but ensure it's on for planted crops
+                // (The catalog entry for TomatoPlant/Cabbage may or may not have it enabled)
+            }
+
+            SaveWorld();
+
+            string seedName = GetDisplayNameForItemId(plantingSeedId);
+            SetStatusMessage($"Planted {seedName}! It will take about {Mathf.RoundToInt(cropItem.renewableRegrowSeconds)}s to grow.");
+
+            // Check if player has more seeds to continue planting
+            storedFoodInventory.TryGetValue(plantingSeedId, out int remaining);
+            if (remaining > 0)
+            {
+                CleanupGhost();
+                EnsureGhost(cropItem);
+            }
+            else
+            {
+                SetStatusMessage($"Planted {seedName}! No more seeds of this type.");
+                CancelPlacement();
+            }
+        }
+
+        private void TryBeginPlantingFirstSeed()
+        {
+            // Find the first seed the player has in inventory
+            foreach (KeyValuePair<string, string> pair in seedToCropMap)
+            {
+                if (storedFoodInventory.TryGetValue(pair.Key, out int count) && count > 0)
+                {
+                    BeginPlantingSeed(pair.Key);
+                    return;
+                }
+            }
+
+            SetStatusMessage("No seeds in inventory. Craft seeds from food at the crafting panel.");
         }
 
         private void EnsureGhost(BuildCatalogItem item)
@@ -2711,12 +3060,12 @@ namespace MPSettlers.Gameplay
             float rowBottom = rowTop + rowHeight;
 
             Rect panelRect = layout.buildPanelRect;
-            float previewHeight = Mathf.Clamp(panelRect.width * 0.46f, 136f, 220f);
-            float detailsHeight = Mathf.Clamp(86f * currentUiScale, 74f, 108f);
-            float footerHeight = Mathf.Clamp(48f * currentUiScale, 40f, 58f);
+            float previewHeight = Mathf.Clamp(panelRect.width * 0.44f, 140f, 260f);
+            float detailsHeight = Mathf.Clamp(90f * currentUiScale, 78f, 124f);
+            float footerHeight = Mathf.Clamp(50f * currentUiScale, 42f, 64f);
             float viewportHeight = Mathf.Max(
-                124f,
-                panelRect.height - previewHeight - detailsHeight - footerHeight - Mathf.Clamp(92f * currentUiScale, 76f, 110f));
+                130f,
+                panelRect.height - previewHeight - detailsHeight - footerHeight - Mathf.Clamp(96f * currentUiScale, 80f, 120f));
 
             float totalContent = items.Count * rowHeight;
             float maxScroll = Mathf.Max(0f, totalContent - viewportHeight);
@@ -2889,6 +3238,325 @@ namespace MPSettlers.Gameplay
             inventory[itemId] = currentCount;
         }
 
+        // ══════════════════════════════════════════════════════════════
+        //  World Container Storage (Barrel / Box only)
+        // ══════════════════════════════════════════════════════════════
+
+        private bool TryOpenContainerStorage(PlacedWorldObject placedObject)
+        {
+            if (placedObject == null || !TryGetContainerDefinition(placedObject, out _, out _))
+            {
+                return false;
+            }
+
+            activeContainerObject = placedObject;
+            containerStorageOpen = true;
+            pointerMode = true;
+            containerTransferAmount = 1;
+
+            followCamera?.SetUiCursorMode(true);
+            if (playerMovement != null)
+            {
+                playerMovement.InputSuppressed = true;
+            }
+
+            SetStatusMessage($"Opened {GetContainerDisplayName(placedObject)}.");
+            return true;
+        }
+
+        private void CloseContainerStorage()
+        {
+            containerStorageOpen = false;
+            activeContainerObject = null;
+            pointerMode = false;
+
+            followCamera?.SetUiCursorMode(false);
+            if (playerMovement != null)
+            {
+                playerMovement.InputSuppressed = false;
+            }
+        }
+
+        private bool TryGetActiveContainer(out PlacedWorldObject placedObject, out ContainerRuntimeStorage storage, out int capacity)
+        {
+            placedObject = activeContainerObject;
+            storage = null;
+            capacity = 0;
+
+            if (!containerStorageOpen || placedObject == null || string.IsNullOrWhiteSpace(placedObject.UniqueId))
+            {
+                return false;
+            }
+
+            if (!TryGetContainerDefinition(placedObject, out _, out capacity))
+            {
+                return false;
+            }
+
+            storage = GetOrCreateContainerStorage(placedObject.UniqueId);
+            return storage != null;
+        }
+
+        private bool TryGetContainerDefinition(PlacedWorldObject placedObject, out string label, out int capacity)
+        {
+            label = string.Empty;
+            capacity = 0;
+
+            if (placedObject == null)
+            {
+                return false;
+            }
+
+            string catalogId = placedObject.CatalogItemId ?? string.Empty;
+            string prefabName = string.Empty;
+            if (catalogLookup.TryGetValue(catalogId, out BuildCatalogItem catalogItem))
+            {
+                prefabName = catalogItem.prefabName ?? string.Empty;
+            }
+
+            if (string.Equals(catalogId, "Town:Barrel_01_LITE", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(prefabName, "Barrel_01_LITE", StringComparison.OrdinalIgnoreCase))
+            {
+                label = "Barrel";
+                capacity = BarrelStorageCapacity;
+                return true;
+            }
+
+            if (string.Equals(catalogId, "Farm:Box_01", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(prefabName, "Box_01", StringComparison.OrdinalIgnoreCase))
+            {
+                label = "Box";
+                capacity = BoxStorageCapacity;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool IsContainerCatalogItem(BuildCatalogItem item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            return string.Equals(item.id, "Town:Barrel_01_LITE", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(item.prefabName, "Barrel_01_LITE", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(item.id, "Farm:Box_01", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(item.prefabName, "Box_01", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string GetContainerDisplayName(PlacedWorldObject placedObject)
+        {
+            return TryGetContainerDefinition(placedObject, out string label, out _) ? label : "Container";
+        }
+
+        private ContainerRuntimeStorage GetOrCreateContainerStorage(string uniqueId)
+        {
+            if (string.IsNullOrWhiteSpace(uniqueId))
+            {
+                return null;
+            }
+
+            if (!containerStorageByObjectId.TryGetValue(uniqueId, out ContainerRuntimeStorage storage) || storage == null)
+            {
+                storage = new ContainerRuntimeStorage();
+                containerStorageByObjectId[uniqueId] = storage;
+            }
+
+            return storage;
+        }
+
+        private int GetContainerUsedCapacity(ContainerRuntimeStorage storage)
+        {
+            if (storage == null)
+            {
+                return 0;
+            }
+
+            return Mathf.Max(0, storage.wood)
+                   + Mathf.Max(0, storage.stone)
+                   + Mathf.Max(0, storage.food)
+                   + storage.storedFoodItems.Values.Where(v => v > 0).Sum()
+                   + storage.storedWeapons.Values.Where(v => v > 0).Sum();
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  Crafting System
+        // ══════════════════════════════════════════════════════════════
+
+        private void InitializeCraftingRecipes()
+        {
+            craftingRecipes = new List<CraftingRecipe>
+            {
+                new() { id = "craft_wooden_fence", displayName = "Wooden Fence", description = "A simple wooden fence section.",
+                    resultItemId = "town:WoodFence_01", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 3 } },
+                new() { id = "craft_wooden_gate", displayName = "Wooden Gate", description = "A gate for your settlement.",
+                    resultItemId = "town:WoodGate", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 5, stone = 1 } },
+                new() { id = "craft_stone_wall", displayName = "Stone Wall", description = "A sturdy stone wall segment.",
+                    resultItemId = "town:StoneWall_01", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 1, stone = 5 } },
+                new() { id = "craft_campfire", displayName = "Campfire", description = "Provides light and warmth.",
+                    resultItemId = "town:Campfire", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 4, stone = 2 } },
+                new() { id = "craft_torch", displayName = "Torch", description = "A standing torch for your settlement.",
+                    resultItemId = "town:Torch_01", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 2 } },
+                new() { id = "craft_barrel", displayName = "Storage Barrel", description = "Extra storage for your settlement.",
+                    resultItemId = "town:Barrel_01", resultCount = 1, resultIsStructure = true,
+                    cost = new CraftingIngredient { wood = 4, stone = 1 } },
+                new() { id = "craft_sword", displayName = "Iron Sword", description = "A basic melee weapon.",
+                    resultItemId = "weapons:Sword01", resultCount = 1, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 2, stone = 6 } },
+                new() { id = "craft_axe", displayName = "Battle Axe", description = "Heavy hitting but slow.",
+                    resultItemId = "weapons:Ax01", resultCount = 1, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 3, stone = 5 } },
+                new() { id = "craft_shield", displayName = "Wooden Shield", description = "Blocks incoming damage.",
+                    resultItemId = "weapons:Shield01", resultCount = 1, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 5, stone = 2 } },
+                new() { id = "craft_dagger", displayName = "Dagger", description = "Fast and light.",
+                    resultItemId = "weapons:Dagger01", resultCount = 1, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 1, stone = 3 } },
+                new() { id = "craft_spear", displayName = "Spear", description = "Good reach, balanced stats.",
+                    resultItemId = "weapons:Spear01", resultCount = 1, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 4, stone = 3 } },
+                new() { id = "craft_arrows", displayName = "Arrows (x5)", description = "Ammunition for bows.",
+                    resultItemId = "weapons:Arrow01", resultCount = 5, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 3, stone = 1 } },
+                new() { id = "craft_cooked_food", displayName = "Cooked Rations", description = "Prepared food from raw ingredients.",
+                    resultItemId = "food:Bread_01", resultCount = 2, resultIsStructure = false,
+                    cost = new CraftingIngredient { wood = 1, food = 3 } },
+                // ── Seed recipes ──────────────────────────────────────
+                new() { id = "craft_tomato_seeds", displayName = "Tomato Seeds (x3)", description = "Plant in ground to grow tomatoes over time.",
+                    resultItemId = "seed:tomato", resultCount = 3, resultIsStructure = false,
+                    cost = new CraftingIngredient { food = 2 } },
+                new() { id = "craft_cabbage_seeds", displayName = "Cabbage Seeds (x3)", description = "Plant in ground to grow cabbages over time.",
+                    resultItemId = "seed:cabbage", resultCount = 3, resultIsStructure = false,
+                    cost = new CraftingIngredient { food = 2 } },
+            };
+
+            // Validate recipes against actual catalog — remove any whose resultItemId doesn't exist
+            craftingRecipes.RemoveAll(r => !catalogLookup.ContainsKey(r.resultItemId));
+        }
+
+        private bool CanAffordRecipe(CraftingRecipe recipe)
+        {
+            if (recipe?.cost == null) return true;
+            CraftingIngredient c = recipe.cost;
+            if (c.wood > wood) return false;
+            if (c.stone > stone) return false;
+            if (c.food > food) return false;
+            if (!string.IsNullOrWhiteSpace(c.requiredItemId) && c.requiredItemCount > 0)
+            {
+                int itemCount = GetTotalItemCount(c.requiredItemId);
+                if (itemCount < c.requiredItemCount) return false;
+            }
+            return true;
+        }
+
+        private int GetTotalItemCount(string itemId)
+        {
+            int count = 0;
+            if (storedFoodInventory.TryGetValue(itemId, out int fc)) count += fc;
+            if (storedWeaponInventory.TryGetValue(itemId, out int wc)) count += wc;
+            return count;
+        }
+
+        private void SpendCraftingCost(CraftingIngredient cost)
+        {
+            if (cost == null) return;
+
+            wood = Mathf.Max(0, wood - cost.wood);
+            stone = Mathf.Max(0, stone - cost.stone);
+            food = Mathf.Max(0, food - cost.food);
+
+            if (!string.IsNullOrWhiteSpace(cost.requiredItemId) && cost.requiredItemCount > 0)
+            {
+                int remaining = cost.requiredItemCount;
+                remaining = SpendItemFromInventory(storedFoodInventory, cost.requiredItemId, remaining);
+                SpendItemFromInventory(storedWeaponInventory, cost.requiredItemId, remaining);
+            }
+        }
+
+        private int SpendItemFromInventory(Dictionary<string, int> inventory, string itemId, int remaining)
+        {
+            if (remaining <= 0) return 0;
+            if (!inventory.TryGetValue(itemId, out int available) || available <= 0) return remaining;
+            int spend = Mathf.Min(remaining, available);
+            RemoveInventoryCount(inventory, itemId, spend);
+            return remaining - spend;
+        }
+
+        private void CraftRecipe(CraftingRecipe recipe)
+        {
+            if (recipe == null) return;
+            if (!CanAffordRecipe(recipe))
+            {
+                SetStatusMessage("Not enough materials to craft this.");
+                return;
+            }
+
+            if (!catalogLookup.TryGetValue(recipe.resultItemId, out BuildCatalogItem resultItem))
+            {
+                SetStatusMessage("Recipe result not found in catalog.");
+                return;
+            }
+
+            SpendCraftingCost(recipe.cost);
+
+            if (recipe.resultIsStructure)
+            {
+                // Structure recipes go through the build/placement flow
+                SetStatusMessage($"Crafted {recipe.displayName} — use Build menu to place it.");
+                // Refund the cost into a "free" placement by giving resources back
+                // Actually, for structures we just let them build with the build system.
+                // The cost was already spent — mark it as available in build mode.
+                // Simplest approach: add as a free-place credit by just opening build panel.
+                // Better: directly add to inventory as a placeable item credit.
+                // Most coherent: the build system already charges BuildCost. Since we just
+                // spent crafting cost, refund the build cost equivalent so the player can
+                // place it for free. But this is complex. Simplest: give the resources back
+                // and let build system charge them. That means crafting structures is pointless.
+                //
+                // Best approach: add the item to weapon inventory as a "structure kit" that
+                // the player can then place.
+                AddInventoryCount(storedWeaponInventory, recipe.resultItemId, recipe.resultCount);
+            }
+            else
+            {
+                // Item/pickup recipes go to the appropriate inventory
+                if (resultItem.pickupInventoryType == PickupInventoryType.Food)
+                {
+                    AddInventoryCount(storedFoodInventory, recipe.resultItemId, recipe.resultCount);
+                }
+                else
+                {
+                    AddInventoryCount(storedWeaponInventory, recipe.resultItemId, recipe.resultCount);
+                }
+            }
+
+            SetStatusMessage($"Crafted {recipe.resultCount}x {recipe.displayName}!");
+            SaveWorld();
+        }
+
+        private string GetRecipeCostDisplay(CraftingRecipe recipe)
+        {
+            if (recipe?.cost == null) return "Free";
+            CraftingIngredient c = recipe.cost;
+            List<string> parts = new();
+            if (c.wood > 0) parts.Add($"{c.wood} wood");
+            if (c.stone > 0) parts.Add($"{c.stone} stone");
+            if (c.food > 0) parts.Add($"{c.food} food");
+            if (!string.IsNullOrWhiteSpace(c.requiredItemId) && c.requiredItemCount > 0)
+            {
+                string name = GetDisplayNameForItemId(c.requiredItemId);
+                parts.Add($"{c.requiredItemCount}x {name}");
+            }
+            return parts.Count == 0 ? "Free" : string.Join("  ·  ", parts);
+        }
+
         private string FormatInventorySummary(Dictionary<string, int> inventory, int maxEntries)
         {
             if (inventory == null || inventory.Count == 0 || maxEntries <= 0)
@@ -3040,19 +3708,191 @@ namespace MPSettlers.Gameplay
             selectedInGameMenuTab = InGameMenuTab.Overview;
             CleanupGhost();
             inGameMenuOpen = true;
+
+            // Apply immediately so the cursor unlocks and camera/look stops
+            // on the same frame the key is pressed (before LateUpdate).
+            followCamera?.SetUiCursorMode(true);
+            if (playerMovement != null)
+                playerMovement.InputSuppressed = true;
+
+            if (pauseGameWhenJournalOpen)
+            {
+                timeScaleBeforePause = Mathf.Approximately(Time.timeScale, 0f) ? timeScaleBeforePause : Time.timeScale;
+                Time.timeScale = 0f;
+            }
         }
 
         private void CloseInGameMenu()
         {
             inGameMenuOpen = false;
             pointerMode = false;
+
+            // Restore gameplay mode immediately.
+            followCamera?.SetUiCursorMode(false);
+            if (playerMovement != null)
+                playerMovement.InputSuppressed = false;
+
+            if (pauseGameWhenJournalOpen && Mathf.Approximately(Time.timeScale, 0f))
+            {
+                Time.timeScale = timeScaleBeforePause;
+            }
+        }
+
+        private void OpenEscMenu()
+        {
+            if (inGameMenuOpen || buildPanelOpen)
+                return;
+
+            escMenuOpen = true;
+            pointerMode = true;
+
+            followCamera?.SetUiCursorMode(true);
+            if (playerMovement != null)
+                playerMovement.InputSuppressed = true;
+        }
+
+        private void CloseEscMenu()
+        {
+            escMenuOpen = false;
+            pointerMode = false;
+
+            followCamera?.SetUiCursorMode(false);
+            if (playerMovement != null)
+                playerMovement.InputSuppressed = false;
+        }
+
+        private void EscMenuOpenSettings()
+        {
+            CloseEscMenu();
+            selectedInGameMenuTab = InGameMenuTab.Settings;
+            OpenInGameMenu();
+        }
+
+        private void DrawEscMenu()
+        {
+            float screenW = Screen.width;
+            float screenH = Screen.height;
+
+            // Dim overlay
+            Color prev = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.72f);
+            GUI.DrawTexture(new Rect(0f, 0f, screenW, screenH), panelTexture);
+
+            // Centered panel
+            float panelW = Mathf.Clamp(340f * currentUiScale, 280f, 480f);
+            float buttonH = Mathf.Clamp(42f * currentUiScale, 36f, 58f);
+            float buttonGap = Mathf.RoundToInt(10f * currentUiScale);
+            float titleH = Mathf.Clamp(48f * currentUiScale, 40f, 66f);
+            float innerPad = Mathf.RoundToInt(24f * currentUiScale);
+            int buttonCount = 4;
+            float panelH = titleH + innerPad + (buttonH * buttonCount) + (buttonGap * (buttonCount - 1)) + innerPad + innerPad;
+
+            float panelX = (screenW - panelW) * 0.5f;
+            float panelY = (screenH - panelH) * 0.5f;
+            Rect panelRect = new Rect(panelX, panelY, panelW, panelH);
+
+            // Panel background
+            GUI.color = new Color(0.040f, 0.051f, 0.031f, 0.96f);
+            GUI.DrawTexture(panelRect, journalShellTexture);
+
+            // Border
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.50f);
+            GUI.DrawTexture(new Rect(panelRect.x, panelRect.y, panelRect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(panelRect.x, panelRect.yMax - 1f, panelRect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(panelRect.x, panelRect.y, 1f, panelRect.height), amberAccentTexture);
+            GUI.DrawTexture(new Rect(panelRect.xMax - 1f, panelRect.y, 1f, panelRect.height), amberAccentTexture);
+
+            // Top accent
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.92f);
+            GUI.DrawTexture(new Rect(panelRect.x, panelRect.y, panelRect.width, 2f), amberAccentTexture);
+
+            GUI.color = prev;
+
+            // Title
+            Rect titleRect = new Rect(panelRect.x, panelRect.y + innerPad, panelRect.width, titleH);
+            GUI.Label(titleRect, "PAUSED", journalTitleStyle);
+
+            // Separator under title
+            prev = GUI.color;
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.35f);
+            GUI.DrawTexture(new Rect(panelRect.x + innerPad, titleRect.yMax, panelRect.width - innerPad * 2f, 1f), amberAccentTexture);
+            GUI.color = prev;
+
+            // Buttons area
+            float buttonsY = titleRect.yMax + innerPad;
+            float buttonX = panelRect.x + innerPad;
+            float buttonW = panelRect.width - innerPad * 2f;
+
+            if (DrawEscMenuButton(new Rect(buttonX, buttonsY, buttonW, buttonH), "Resume"))
+            {
+                CloseEscMenu();
+            }
+
+            buttonsY += buttonH + buttonGap;
+            if (DrawEscMenuButton(new Rect(buttonX, buttonsY, buttonW, buttonH), "Settings"))
+            {
+                EscMenuOpenSettings();
+            }
+
+            buttonsY += buttonH + buttonGap;
+            if (DrawEscMenuButton(new Rect(buttonX, buttonsY, buttonW, buttonH), "Controls / Help"))
+            {
+                CloseEscMenu();
+                selectedInGameMenuTab = InGameMenuTab.Overview;
+                OpenInGameMenu();
+            }
+
+            buttonsY += buttonH + buttonGap;
+            if (DrawEscMenuButton(new Rect(buttonX, buttonsY, buttonW, buttonH), "Quit"))
+            {
+#if UNITY_EDITOR
+                UnityEditor.EditorApplication.isPlaying = false;
+#else
+                Application.Quit();
+#endif
+            }
+        }
+
+        private bool DrawEscMenuButton(Rect rect, string label)
+        {
+            Color prev = GUI.color;
+            bool hover = rect.Contains(Event.current.mousePosition);
+
+            // Button background
+            GUI.color = hover
+                ? new Color(0.788f, 0.659f, 0.298f, 0.22f)
+                : new Color(0.10f, 0.12f, 0.08f, 0.80f);
+            GUI.DrawTexture(rect, panelTexture);
+
+            // Button border
+            GUI.color = hover
+                ? new Color(0.788f, 0.659f, 0.298f, 0.60f)
+                : new Color(0.788f, 0.659f, 0.298f, 0.25f);
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(rect.x, rect.y, 1f, rect.height), amberAccentTexture);
+            GUI.DrawTexture(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), amberAccentTexture);
+
+            GUI.color = prev;
+
+            // Label
+            GUI.Label(rect, label, journalTitleStyle);
+
+            // Click detection
+            if (hover && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            {
+                Event.current.Use();
+                return true;
+            }
+
+            return false;
         }
 
         private void DrawHud()
         {
             UiLayout layout = GetUiLayout();
             BuildCatalogItem selectedHotbarItem = GetSelectedHotbarItem();
-            float barHeight = Mathf.Clamp(14f * currentUiScale, 11f, 17f);
+            float barHeight = Mathf.Clamp(14f * currentUiScale, 11f, 20f);
 
             DrawBorderedPanel(layout.playerPanelRect, () =>
             {
@@ -3190,16 +4030,16 @@ namespace MPSettlers.Gameplay
 
         private void DrawHotbarHud()
         {
-            float slotSize = Mathf.Clamp(64f * currentUiScale, 52f, 76f);
-            float gap = Mathf.Clamp(8f * currentUiScale, 6f, 12f);
-            float barHeight = Mathf.Clamp(6f * currentUiScale, 4f, 8f);
+            float slotSize = Mathf.Clamp(68f * currentUiScale, 54f, 94f);
+            float gap = Mathf.Clamp(8f * currentUiScale, 5f, 14f);
+            float barHeight = Mathf.Clamp(6f * currentUiScale, 4f, 9f);
 
             float totalWidth = (slotSize * HotbarSlotCount) + (gap * (HotbarSlotCount - 1));
             Rect areaRect = new Rect(
                 (Screen.width - totalWidth) * 0.5f,
-                Screen.height - slotSize - Mathf.Clamp(28f * currentUiScale, 20f, 36f),
+                Screen.height - slotSize - Mathf.Clamp(30f * currentUiScale, 22f, 42f),
                 totalWidth,
-                slotSize + barHeight + 4f);
+                slotSize + barHeight + 6f);
 
             GUILayout.BeginArea(areaRect);
             GUILayout.BeginHorizontal();
@@ -3278,12 +4118,12 @@ namespace MPSettlers.Gameplay
             Rect panelRect = layout.buildPanelRect;
             BuildCatalogItem selectedItem = GetSelectedItem();
 
-            float previewHeight = Mathf.Clamp(panelRect.width * 0.46f, 136f, 220f);
-            float detailsHeight = Mathf.Clamp(86f * currentUiScale, 74f, 108f);
-            float footerHeight = Mathf.Clamp(48f * currentUiScale, 40f, 58f);
+            float previewHeight = Mathf.Clamp(panelRect.width * 0.44f, 140f, 260f);
+            float detailsHeight = Mathf.Clamp(90f * currentUiScale, 78f, 124f);
+            float footerHeight = Mathf.Clamp(50f * currentUiScale, 42f, 64f);
             float listHeight = Mathf.Max(
-                124f,
-                panelRect.height - previewHeight - detailsHeight - footerHeight - Mathf.Clamp(92f * currentUiScale, 76f, 110f));
+                130f,
+                panelRect.height - previewHeight - detailsHeight - footerHeight - Mathf.Clamp(96f * currentUiScale, 80f, 120f));
 
             GUILayout.BeginArea(panelRect, windowStyle);
 
@@ -3407,7 +4247,9 @@ namespace MPSettlers.Gameplay
 
             DrawBorderPanel(rect, hudCardTexture, 1f);
 
-            Rect innerRect = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
+            float padH = Mathf.RoundToInt(14f * currentUiScale);
+            float padV = Mathf.RoundToInt(10f * currentUiScale);
+            Rect innerRect = new Rect(rect.x + padH, rect.y + padV, rect.width - padH * 2f, rect.height - padV * 2f);
             Rect accentRect = new Rect(innerRect.x, innerRect.y, innerRect.width, 2f);
             GUI.DrawTexture(accentRect, amberAccentTexture);
 
@@ -3429,7 +4271,9 @@ namespace MPSettlers.Gameplay
 
             DrawBorderPanel(rect, hudCardTexture, 1f);
 
-            Rect innerRect = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f);
+            float padH = Mathf.RoundToInt(14f * currentUiScale);
+            float padV = Mathf.RoundToInt(10f * currentUiScale);
+            Rect innerRect = new Rect(rect.x + padH, rect.y + padV, rect.width - padH * 2f, rect.height - padV * 2f);
             Rect accentRect = new Rect(innerRect.x, innerRect.y, innerRect.width, 2f);
             GUI.DrawTexture(accentRect, amberAccentTexture);
 
@@ -3441,20 +4285,23 @@ namespace MPSettlers.Gameplay
 
         private void DrawInGameMenu()
         {
+            float screenW = Screen.width;
+            float screenH = Screen.height;
+            float marginFraction = screenW >= 2560f ? 0.025f : screenW >= 1600f ? 0.03f : 0.035f;
             float margin = Mathf.Clamp(
-                Mathf.Min(Screen.width, Screen.height) * 0.035f, 24f, 72f);
+                Mathf.Min(screenW, screenH) * marginFraction, 20f, 80f);
 
             Rect shellRect = new Rect(
                 margin,
                 margin,
-                Mathf.Max(420f, Screen.width - (margin * 2f)),
-                Mathf.Max(320f, Screen.height - (margin * 2f)));
+                Mathf.Max(420f, screenW - (margin * 2f)),
+                Mathf.Max(320f, screenH - (margin * 2f)));
 
             Color prev = GUI.color;
 
-            GUI.color = new Color(0f, 0f, 0f, 0.75f);
+            GUI.color = new Color(0f, 0f, 0f, 0.78f);
             GUI.DrawTexture(
-                new Rect(0f, 0f, Screen.width, Screen.height),
+                new Rect(0f, 0f, screenW, screenH),
                 panelTexture);
 
             GUI.color = new Color(0.040f, 0.051f, 0.031f, 0.98f);
@@ -3471,18 +4318,18 @@ namespace MPSettlers.Gameplay
                 new Rect(shellRect.x, shellRect.y, shellRect.width, 2f),
                 amberAccentTexture);
 
-            float navHeight = Mathf.Clamp(78f * currentUiScale, 72f, 120f);
+            float navHeight = Mathf.Clamp(82f * currentUiScale, 74f, 140f);
 
             GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.92f);
             GUI.DrawTexture(
-                new Rect(shellRect.x + 18f, shellRect.y + navHeight + 8f,
-                    shellRect.width - 36f, 1f),
+                new Rect(shellRect.x + 22f, shellRect.y + navHeight + 10f,
+                    shellRect.width - 44f, 1f),
                 amberAccentTexture);
 
             GUI.color = prev;
 
-            float padding = Mathf.RoundToInt(18f * currentUiScale);
-            float footerHeight = Mathf.Clamp(28f * currentUiScale, 24f, 38f);
+            float padding = Mathf.RoundToInt(22f * currentUiScale);
+            float footerHeight = Mathf.Clamp(30f * currentUiScale, 26f, 42f);
 
             Rect navRect = new Rect(
                 shellRect.x + padding,
@@ -3498,27 +4345,28 @@ namespace MPSettlers.Gameplay
 
             Rect contentRect = new Rect(
                 shellRect.x + padding,
-                navRect.yMax + 12f,
+                navRect.yMax + Mathf.RoundToInt(14f * currentUiScale),
                 shellRect.width - (padding * 2f),
-                footerRect.y - (navRect.yMax + 20f));
+                footerRect.y - (navRect.yMax + Mathf.RoundToInt(22f * currentUiScale)));
 
             Rect escRect = new Rect(
-                shellRect.xMax - padding - 140f,
+                shellRect.xMax - padding - 150f,
                 shellRect.y + padding,
-                140f,
-                22f);
+                150f,
+                24f);
             GUI.Label(escRect, "Esc to close", escHintStyle);
 
             GUILayout.BeginArea(navRect);
             GUILayout.Label("Settler Journal", journalTitleStyle);
             GUILayout.Label("World state, tracking, and character notes", journalSubtitleStyle);
-            GUILayout.Space(Mathf.RoundToInt(8f * currentUiScale));
+            GUILayout.Space(Mathf.RoundToInt(10f * currentUiScale));
 
             GUILayout.BeginHorizontal();
             DrawInGameMenuTabButton(InGameMenuTab.Overview, "Overview");
             DrawInGameMenuTabButton(InGameMenuTab.Skills, "Skills");
             DrawInGameMenuTabButton(InGameMenuTab.Inventory, "Inventory");
             DrawInGameMenuTabButton(InGameMenuTab.Settings, "Settings");
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
@@ -3531,7 +4379,7 @@ namespace MPSettlers.Gameplay
 
             GUI.Label(
                 new Rect(footerRect.x + 2f, footerRect.y + 4f, footerRect.width, 18f),
-                "Journal navigation  •  Esc close  •  Tabs switch sections",
+                "Journal navigation  •  Esc close  •  A/D or 1-4 switch tabs",
                 smallMutedStyle);
 
             switch (selectedInGameMenuTab)
@@ -3546,15 +4394,15 @@ namespace MPSettlers.Gameplay
         private void DrawInGameMenuTabButton(InGameMenuTab tab, string label)
         {
             bool isSelected = selectedInGameMenuTab == tab;
-            float buttonHeight = Mathf.RoundToInt(36f * currentUiScale);
-            float minWidth = Mathf.Clamp(96f * currentUiScale, 88f, 200f);
+            float buttonHeight = Mathf.RoundToInt(38f * currentUiScale);
+            float minWidth = Mathf.Clamp(110f * currentUiScale, 96f, 240f);
+            float tabGap = Mathf.RoundToInt(10f * currentUiScale);
 
             Rect buttonRect = GUILayoutUtility.GetRect(
                 minWidth,
                 buttonHeight,
                 GUILayout.MinWidth(minWidth),
-                GUILayout.ExpandWidth(true),
-                GUILayout.MaxWidth(380f),
+                GUILayout.MaxWidth(280f),
                 GUILayout.Height(buttonHeight));
 
             if (isSelected)
@@ -3575,39 +4423,42 @@ namespace MPSettlers.Gameplay
             {
                 Color previousColor = GUI.color;
                 GUI.color = new Color(0.82f, 0.64f, 0.24f, 0.95f);
-                GUI.DrawTexture(new Rect(buttonRect.x + 10f, buttonRect.yMax - 2f, buttonRect.width - 20f, 2f), amberAccentTexture);
+                GUI.DrawTexture(new Rect(buttonRect.x + 8f, buttonRect.yMax - 2f, buttonRect.width - 16f, 2f), amberAccentTexture);
                 GUI.color = previousColor;
             }
 
-            GUILayout.Space(8f);
+            GUILayout.Space(tabGap);
         }
 
         private void DrawJournalPanel(Rect rect, string title, Action drawer, string subtitle = null)
         {
             DrawBorderPanel(rect, journalCardTexture, 1f);
 
-            Rect innerRect = new Rect(rect.x + 12f, rect.y + 10f, rect.width - 24f, rect.height - 20f);
+            float padH = Mathf.RoundToInt(16f * currentUiScale);
+            float padV = Mathf.RoundToInt(14f * currentUiScale);
+            Rect innerRect = new Rect(rect.x + padH, rect.y + padV, rect.width - padH * 2f, rect.height - padV * 2f);
 
-            Rect titleRect = new Rect(innerRect.x, innerRect.y, innerRect.width, 22f);
+            float titleHeight = Mathf.RoundToInt(22f * currentUiScale);
+            Rect titleRect = new Rect(innerRect.x, innerRect.y, innerRect.width, titleHeight);
             GUI.Label(titleRect, title, headingStyle);
 
-            Rect accentRect = new Rect(innerRect.x, titleRect.yMax + 4f, innerRect.width, 2f);
+            Rect accentRect = new Rect(innerRect.x, titleRect.yMax + 5f, innerRect.width, 2f);
             GUI.DrawTexture(accentRect, amberAccentTexture);
 
             float subtitleHeight = 0f;
             if (!string.IsNullOrWhiteSpace(subtitle))
             {
-                subtitleHeight = Mathf.Clamp(18f * currentUiScale, 16f, 22f);
+                subtitleHeight = Mathf.Clamp(18f * currentUiScale, 16f, 24f);
                 Rect subtitleRect = new Rect(innerRect.x, accentRect.yMax + 6f, innerRect.width, subtitleHeight);
                 GUI.Label(subtitleRect, subtitle, journalSubtitleStyle);
             }
 
-            float contentTop = accentRect.yMax + 8f + subtitleHeight + (subtitleHeight > 0f ? 2f : 0f);
+            float contentTop = accentRect.yMax + 10f + subtitleHeight + (subtitleHeight > 0f ? 2f : 0f);
             Rect contentRect = new Rect(
                 innerRect.x,
                 contentTop,
                 innerRect.width,
-                innerRect.yMax - contentTop);
+                Mathf.Max(20f, innerRect.yMax - contentTop));
 
             GUILayout.BeginArea(contentRect);
             drawer?.Invoke();
@@ -3616,11 +4467,11 @@ namespace MPSettlers.Gameplay
 
         private void DrawOverviewTab(Rect contentRect)
         {
-            float gutter = Mathf.RoundToInt(12f * currentUiScale);
-            float topHeight = Mathf.Clamp(contentRect.height * 0.48f, 210f, 460f);
-            float leftWidth = contentRect.width * 0.28f;
-            float middleWidth = contentRect.width * 0.34f;
-            float rightWidth = contentRect.width - leftWidth - middleWidth - (gutter * 2f);
+            float gutter = Mathf.RoundToInt(14f * currentUiScale);
+            float topHeight = Mathf.Clamp(contentRect.height * 0.50f, 220f, 540f);
+            float leftWidth = Mathf.Max(200f, contentRect.width * 0.26f);
+            float middleWidth = Mathf.Max(240f, contentRect.width * 0.36f);
+            float rightWidth = Mathf.Max(180f, contentRect.width - leftWidth - middleWidth - (gutter * 2f));
 
             Rect mapRect = new(contentRect.x, contentRect.y, leftWidth, topHeight);
             Rect overviewRect = new(mapRect.xMax + gutter, contentRect.y, middleWidth, topHeight);
@@ -3657,7 +4508,7 @@ namespace MPSettlers.Gameplay
                 DrawStatBarRow("Food", Mathf.Clamp01(food / 20f), statBarStaminaTexture, $"{food}", bar);
 
                 GUILayout.Space(6f);
-                GUILayout.Label($"Stored: {FormatInventorySummary(storedFoodInventory, 3)}", journalBodyStyle);
+                GUILayout.Label($"Carried: {FormatInventorySummary(storedFoodInventory, 3)}", journalBodyStyle);
                 GUILayout.Label($"Arms: {FormatInventorySummary(storedWeaponInventory, 3)}", journalBodyStyle);
 
                 GUILayout.Space(6f);
@@ -3740,8 +4591,8 @@ namespace MPSettlers.Gameplay
 
         private void DrawSkillsTab(Rect contentRect)
         {
-            float gutter = Mathf.RoundToInt(12f * currentUiScale);
-            float leftWidth = Mathf.Clamp(contentRect.width * 0.52f, 320f, 680f);
+            float gutter = Mathf.RoundToInt(14f * currentUiScale);
+            float leftWidth = Mathf.Clamp(contentRect.width * 0.54f, 340f, 780f);
 
             Rect skillsRect = new Rect(contentRect.x, contentRect.y, leftWidth, contentRect.height);
             Rect previewRect = new Rect(skillsRect.xMax + gutter, contentRect.y, contentRect.width - leftWidth - gutter, contentRect.height);
@@ -3816,29 +4667,33 @@ namespace MPSettlers.Gameplay
 
         private void DrawInventoryTab(Rect contentRect)
         {
-            float gutter = Mathf.RoundToInt(12f * currentUiScale);
+            float gutter = Mathf.RoundToInt(14f * currentUiScale);
 
             // ── Proportional column sizing ────────────────────────────
-            float totalWidth = contentRect.width - (gutter * 2f);
-            float leftFraction  = 0.23f;
-            float rightFraction = 0.27f;
-            float leftWidth  = Mathf.Max(210f, totalWidth * leftFraction);
-            float rightWidth = Mathf.Max(240f, totalWidth * rightFraction);
-            float centerWidth = Mathf.Max(260f, totalWidth - leftWidth - rightWidth);
+            float totalWidth = contentRect.width - (gutter * 3f);
+            float col1Fraction = 0.20f;
+            float col2Fraction = 0.30f;
+            float col3Fraction = 0.24f;
+            float col4Fraction = 0.26f;
+            float col1W = Mathf.Max(200f, totalWidth * col1Fraction);
+            float col2W = Mathf.Max(260f, totalWidth * col2Fraction);
+            float col3W = Mathf.Max(220f, totalWidth * col3Fraction);
+            float col4W = Mathf.Max(230f, totalWidth * col4Fraction);
 
-            Rect leftRect   = new Rect(contentRect.x, contentRect.y, leftWidth, contentRect.height);
-            Rect centerRect = new Rect(leftRect.xMax + gutter, contentRect.y, centerWidth, contentRect.height);
-            Rect rightRect  = new Rect(centerRect.xMax + gutter, contentRect.y, rightWidth, contentRect.height);
+            Rect col1Rect = new Rect(contentRect.x, contentRect.y, col1W, contentRect.height);
+            Rect col2Rect = new Rect(col1Rect.xMax + gutter, contentRect.y, col2W, contentRect.height);
+            Rect col3Rect = new Rect(col2Rect.xMax + gutter, contentRect.y, col3W, contentRect.height);
+            Rect col4Rect = new Rect(col3Rect.xMax + gutter, contentRect.y, col4W, contentRect.height);
 
-            float leftTopHeight = Mathf.Clamp(leftRect.height * 0.36f, 180f, 320f);
-            Rect resourcesRect  = new Rect(leftRect.x, leftRect.y, leftRect.width, leftTopHeight);
-            Rect loadoutRect    = new Rect(leftRect.x, resourcesRect.yMax + gutter,
-                                    leftRect.width, leftRect.height - leftTopHeight - gutter);
+            float col1TopH = Mathf.Clamp(col1Rect.height * 0.38f, 190f, 360f);
+            Rect resourcesRect = new Rect(col1Rect.x, col1Rect.y, col1Rect.width, col1TopH);
+            Rect loadoutRect = new Rect(col1Rect.x, resourcesRect.yMax + gutter,
+                col1Rect.width, col1Rect.height - col1TopH - gutter);
 
             List<JournalInventoryEntry> entries = GetJournalInventoryEntries();
             JournalInventoryEntry? selectedEntry = GetSelectedInventoryEntry(entries);
 
-            // ── Left column ───────────────────────────────────────────
+            // ── Column 1: Resources & Loadout ─────────────────────────
             DrawJournalPanel(resourcesRect, "Resources & Harvest", () =>
             {
                 DrawInventoryResourceStrip();
@@ -3858,36 +4713,40 @@ namespace MPSettlers.Gameplay
                 DrawEquippedLoadout();
             }, "Active gear and armor");
 
-            // ── Center column — direct render (no DrawJournalPanel nesting) ──
-            DrawInventoryCenterPanel(centerRect, entries);
+            // ── Column 2: Inventory Grid ──────────────────────────────
+            DrawInventoryCenterPanel(col2Rect, entries);
 
-            // ── Right column ──────────────────────────────────────────
-            DrawJournalPanel(rightRect, "Selected Item", () =>
+            // ── Column 3: Selected Item + Equip ───────────────────────
+            DrawJournalPanel(col3Rect, "Selected Item", () =>
             {
                 GUILayout.Label("Details and equip options.", journalSubtitleStyle);
                 GUILayout.Space(8f);
                 DrawInventorySelectionDetails(selectedEntry);
                 GUILayout.Space(10f);
                 DrawEquipButton(selectedEntry);
-                GUILayout.Space(10f);
-                DrawCraftingStub();
             }, "Inspection");
+
+            // ── Column 4: Crafting ────────────────────────────────────
+            DrawJournalPanel(col4Rect, "Crafting", () =>
+            {
+                DrawCraftingPanel();
+            }, "Craft items from materials");
         }
 
         private void DrawInventoryCenterPanel(Rect rect, List<JournalInventoryEntry> entries)
         {
-            // ── Panel background + border ─────────────────────────────
             DrawBorderPanel(rect, journalCardTexture, 1f);
 
-            float pad = 12f;
-            Rect inner = new Rect(rect.x + pad, rect.y + 10f, rect.width - pad * 2f, rect.height - 20f);
+            float pad = Mathf.RoundToInt(16f * currentUiScale);
+            float padV = Mathf.RoundToInt(14f * currentUiScale);
+            Rect inner = new Rect(rect.x + pad, rect.y + padV, rect.width - pad * 2f, rect.height - padV * 2f);
 
-            // ── Header ────────────────────────────────────────────────
-            GUI.Label(new Rect(inner.x, inner.y, inner.width, 22f), "Inventory Layout", headingStyle);
-            GUI.DrawTexture(new Rect(inner.x, inner.y + 26f, inner.width, 2f), amberAccentTexture);
-            GUI.Label(new Rect(inner.x, inner.y + 34f, inner.width, 18f), "Settlement storage", journalSubtitleStyle);
+            float titleH = Mathf.RoundToInt(22f * currentUiScale);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width, titleH), "Inventory Layout", headingStyle);
+            GUI.DrawTexture(new Rect(inner.x, inner.y + titleH + 5f, inner.width, 2f), amberAccentTexture);
+            GUI.Label(new Rect(inner.x, inner.y + titleH + 13f, inner.width, Mathf.RoundToInt(18f * currentUiScale)), "Carried inventory", journalSubtitleStyle);
 
-            float gridTop = inner.y + 58f;
+            float gridTop = inner.y + titleH + Mathf.RoundToInt(38f * currentUiScale);
             float gridHeight = Mathf.Max(100f, inner.yMax - gridTop);
             Rect gridRect = new Rect(inner.x, gridTop, inner.width, gridHeight);
 
@@ -3905,18 +4764,15 @@ namespace MPSettlers.Gameplay
 
             Color prev = GUI.color;
 
-            // ── Card background — slightly lighter than the grid frame ──
             GUI.color = new Color(0.090f, 0.102f, 0.058f, 0.97f);
             GUI.DrawTexture(cardRect, journalCardTexture);
 
-            // ── Card border — always visible ────────────────────────
-            GUI.color = new Color(0.788f, 0.659f, 0.298f, isSelected ? 0.65f : 0.30f);
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, isSelected ? 0.70f : 0.25f);
             GUI.DrawTexture(new Rect(cardRect.x, cardRect.y, cardRect.width, 1f), amberAccentTexture);
             GUI.DrawTexture(new Rect(cardRect.x, cardRect.yMax - 1f, cardRect.width, 1f), amberAccentTexture);
             GUI.DrawTexture(new Rect(cardRect.x, cardRect.y, 1f, cardRect.height), amberAccentTexture);
             GUI.DrawTexture(new Rect(cardRect.xMax - 1f, cardRect.y, 1f, cardRect.height), amberAccentTexture);
 
-            // ── Selected highlight overlay ───────────────────────────
             if (isSelected)
             {
                 GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.22f);
@@ -3924,17 +4780,22 @@ namespace MPSettlers.Gameplay
             }
             else if (entry.isFavorited)
             {
-                GUI.color = new Color(0.82f, 0.64f, 0.24f, 0.15f);
-                GUI.DrawTexture(new Rect(cardRect.x + 1f, cardRect.y + 1f, cardRect.width - 2f, 18f), modeBadgeTexture);
+                GUI.color = new Color(0.82f, 0.64f, 0.24f, 0.12f);
+                GUI.DrawTexture(new Rect(cardRect.x + 1f, cardRect.y + 1f, cardRect.width - 2f, 20f), modeBadgeTexture);
             }
 
             GUI.color = prev;
 
-            Rect innerRect = new Rect(cardRect.x + 10f, cardRect.y + 8f, cardRect.width - 20f, cardRect.height - 16f);
+            float innerPad = Mathf.RoundToInt(12f * currentUiScale);
+            Rect innerRect = new Rect(cardRect.x + innerPad, cardRect.y + Mathf.RoundToInt(10f * currentUiScale),
+                cardRect.width - innerPad * 2f, cardRect.height - Mathf.RoundToInt(20f * currentUiScale));
 
-            GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width - 28f, 20f), entry.displayName, headingStyle);
-            GUI.Label(new Rect(innerRect.x, innerRect.y + 22f, innerRect.width, 16f), entry.categoryLabel, smallMutedStyle);
-            GUI.Label(new Rect(innerRect.x, innerRect.y + 44f, innerRect.width, 18f), $"x{entry.quantity}", labelStyle);
+            float lineH = Mathf.RoundToInt(20f * currentUiScale);
+            float smallH = Mathf.RoundToInt(16f * currentUiScale);
+
+            GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width - 28f, lineH), entry.displayName, headingStyle);
+            GUI.Label(new Rect(innerRect.x, innerRect.y + lineH + 2f, innerRect.width, smallH), entry.categoryLabel, smallMutedStyle);
+            GUI.Label(new Rect(innerRect.x, innerRect.y + lineH + smallH + 6f, innerRect.width, lineH), $"x{entry.quantity}", labelStyle);
 
             string subtitle = entry.isFavorited
                 ? "Pinned build item"
@@ -3946,20 +4807,23 @@ namespace MPSettlers.Gameplay
                             ? "Construction material"
                             : "Stored inventory item";
 
-            GUI.Label(new Rect(innerRect.x, innerRect.y + 66f, innerRect.width, 28f), subtitle, journalSubtitleStyle);
+            float subtitleY = innerRect.y + lineH * 2f + smallH + 10f;
+            if (subtitleY + smallH <= innerRect.yMax)
+            {
+                GUI.Label(new Rect(innerRect.x, subtitleY, innerRect.width, smallH + 10f), subtitle, journalSubtitleStyle);
+            }
 
             if (entry.isFavorited)
             {
-                GUI.Label(new Rect(innerRect.xMax - 24f, innerRect.y, 24f, 16f), "★", smallMutedStyle);
+                GUI.Label(new Rect(innerRect.xMax - 24f, innerRect.y, 24f, smallH), "★", smallMutedStyle);
             }
 
             if (isEquipment && !entry.isFavorited)
             {
-                GUI.Label(new Rect(innerRect.xMax - 24f, innerRect.y, 24f, 16f),
+                GUI.Label(new Rect(innerRect.xMax - 24f, innerRect.y, 24f, smallH),
                     IsItemEquipped(entry.itemId) ? "✦" : "⚔", smallMutedStyle);
             }
 
-            // Click to select
             if (GUI.Button(cardRect, GUIContent.none, GUIStyle.none))
             {
                 selectedInventoryItemId = entry.itemId;
@@ -3998,17 +4862,17 @@ namespace MPSettlers.Gameplay
             GUI.color = prev;
 
             // ── Card sizing ───────────────────────────────────────────
-            float gap = Mathf.Clamp(10f * currentUiScale, 8f, 14f);
-            float pad = 10f;
+            float gap = Mathf.Clamp(12f * currentUiScale, 8f, 16f);
+            float pad = Mathf.RoundToInt(12f * currentUiScale);
             float usableWidth = Mathf.Max(160f, gridRect.width - (pad * 2f));
 
-            int columns = usableWidth >= 800f ? 5
-                        : usableWidth >= 580f ? 4
-                        : usableWidth >= 380f ? 3
+            int columns = usableWidth >= 900f ? 5
+                        : usableWidth >= 650f ? 4
+                        : usableWidth >= 420f ? 3
                         : 2;
             float rawCardWidth = (usableWidth - (gap * (columns - 1))) / columns;
-            float cardWidth  = Mathf.Clamp(rawCardWidth, 90f, 200f);
-            float cardHeight = Mathf.Clamp(106f * currentUiScale, 90f, 130f);
+            float cardWidth  = Mathf.Clamp(rawCardWidth, 100f, 230f);
+            float cardHeight = Mathf.Clamp(112f * currentUiScale, 96f, 148f);
 
             // ── Scroll area — single BeginArea directly on screen rect ──
             Rect scrollOuter = new Rect(
@@ -4095,7 +4959,7 @@ namespace MPSettlers.Gameplay
 
         private void DrawQuestRow(string title, bool complete, string progressText, float progress01)
         {
-            float rowHeight = Mathf.Clamp(58f * currentUiScale, 52f, 68f);
+            float rowHeight = Mathf.Clamp(62f * currentUiScale, 54f, 78f);
             Rect rowRect = GUILayoutUtility.GetRect(
                 10f, rowHeight,
                 GUILayout.ExpandWidth(true),
@@ -4200,118 +5064,362 @@ namespace MPSettlers.Gameplay
 
         private void DrawInGameSettingsTab(Rect contentRect)
         {
-            float gutter = Mathf.RoundToInt(12f * currentUiScale);
-            float leftWidth = Mathf.Clamp(contentRect.width * 0.55f, 380f, 560f);
+            // UI scale slider affects only the Settings tab layout.
+            float uiScale = Mathf.Clamp(currentUiScale * settingsUiScaleMultiplier, 0.7f, 1.7f);
+
+            float gutter = Mathf.RoundToInt(14f * uiScale);
+            float leftWidth = Mathf.Clamp(contentRect.width * 0.56f, 380f, 720f);
 
             Rect settingsRect = new Rect(contentRect.x, contentRect.y, leftWidth, contentRect.height);
-            Rect previewRect = new Rect(settingsRect.xMax + gutter, contentRect.y, contentRect.width - leftWidth - gutter, contentRect.height);
+            Rect previewRect = new Rect(
+                settingsRect.xMax + gutter,
+                contentRect.y,
+                contentRect.width - leftWidth - gutter,
+                contentRect.height);
+
+            // Cache camera settings once when opening the settings tab.
+            if (!settingsCameraCacheInitialized && followCamera != null)
+            {
+                cameraMouseSensitivity = followCamera.MouseSensitivity;
+                cameraInvertY = followCamera.InvertY;
+                cameraDistance = followCamera.Distance;
+
+                // Derive smoothing multiplier from the currently applied runtime tuning.
+                float baseFollowSmoothTime = cameraFeelMode == CameraFeelMode.Calm
+                    ? 0.05f
+                    : cameraFeelMode == CameraFeelMode.Normal
+                        ? 0.035f
+                        : 0.025f;
+
+                float baseRotationSmoothSpeed = cameraFeelMode == CameraFeelMode.Calm
+                    ? 24f
+                    : cameraFeelMode == CameraFeelMode.Normal
+                        ? 30f
+                        : 36f;
+
+                float fromFollow = baseFollowSmoothTime > 0f ? followCamera.FollowSmoothTime / baseFollowSmoothTime : 1f;
+                float fromRotation = baseRotationSmoothSpeed > 0f
+                    ? baseRotationSmoothSpeed / Mathf.Max(0.001f, followCamera.RotationSmoothSpeed)
+                    : 1f;
+                cameraSmoothingMultiplier = Mathf.Clamp((fromFollow + fromRotation) * 0.5f, 0.6f, 1.6f);
+
+                settingsCameraCacheInitialized = true;
+            }
 
             DrawJournalPanel(settingsRect, "In-Game Settings", () =>
             {
-                GUILayout.Label("Gameplay-facing session toggles.", journalSubtitleStyle);
-                GUILayout.Space(12f);
+                GUILayout.Label("Session settings for HUD, camera, and journal behavior.", journalSubtitleStyle);
+                GUILayout.Space(Mathf.RoundToInt(10f * uiScale));
 
-                DrawSettingsSection("Display", () =>
+                // ── Display ─────────────────────────────────────────────
+                DrawSettingsSection("Display", 6, uiScale, () =>
                 {
-                    DrawToggleRow("Crosshair", showCrosshair, () => showCrosshair = !showCrosshair, "ON", "OFF");
-                    DrawToggleRow("Action Hints", showActionHints, () => showActionHints = !showActionHints, "ON", "OFF");
+                    DrawSliderRow(
+                        "UI Scale",
+                        settingsUiScaleMultiplier,
+                        0.85f,
+                        1.25f,
+                        v => settingsUiScaleMultiplier = v,
+                        v => $"{(currentUiScale * v):F2}x",
+                        uiScale);
+
+                    bool isFullscreen = Screen.fullScreen;
+                    DrawToggleRow(
+                        "Fullscreen",
+                        isFullscreen,
+                        () => Screen.fullScreen = !Screen.fullScreen,
+                        uiScale,
+                        "FULL",
+                        "WINDOW");
+
+                    DrawInfoRow(
+                        "Resolution",
+                        $"{Screen.width}x{Screen.height}",
+                        uiScale);
+
+                    DrawToggleRow(
+                        "Show FPS",
+                        showFps,
+                        () => showFps = !showFps,
+                        uiScale);
+
+                    DrawToggleRow(
+                        "Show Interaction Hints",
+                        showActionHints,
+                        () => showActionHints = !showActionHints,
+                        uiScale);
+
+                    DrawToggleRow(
+                        "Crosshair",
+                        showCrosshair,
+                        () => showCrosshair = !showCrosshair,
+                        uiScale);
                 });
 
-                GUILayout.Space(10f);
+                GUILayout.Space(Mathf.RoundToInt(10f * uiScale));
 
-                DrawSettingsSection("Camera", () =>
+                // ── Camera ─────────────────────────────────────────────
+                DrawSettingsSection("Camera", 5, uiScale, () =>
                 {
-                    DrawToggleRow("Calm Camera", calmCameraEnabled, () =>
-                    {
-                        calmCameraEnabled = !calmCameraEnabled;
-                        ApplyCameraFeel();
-                    }, "CALM", "FAST");
+                    DrawSliderRow(
+                        "Mouse Sensitivity",
+                        cameraMouseSensitivity,
+                        0.05f,
+                        0.40f,
+                        v =>
+                        {
+                            cameraMouseSensitivity = v;
+                            followCamera?.ApplyLookSettings(cameraMouseSensitivity, cameraInvertY);
+                        },
+                        v => v.ToString("F2"),
+                        uiScale);
+
+                    DrawSliderRow(
+                        "Camera Smoothing",
+                        cameraSmoothingMultiplier,
+                        0.60f,
+                        1.60f,
+                        v =>
+                        {
+                            cameraSmoothingMultiplier = v;
+                            ApplyCameraFeel();
+                        },
+                        v => $"{v:F2}x",
+                        uiScale);
+
+                    DrawToggleRow(
+                        "Invert Y",
+                        cameraInvertY,
+                        () =>
+                        {
+                            cameraInvertY = !cameraInvertY;
+                            followCamera?.ApplyLookSettings(cameraMouseSensitivity, cameraInvertY);
+                        },
+                        uiScale,
+                        "YES",
+                        "NO");
+
+                    DrawSliderRow(
+                        "Camera Distance",
+                        cameraDistance,
+                        2.0f,
+                        10.0f,
+                        v =>
+                        {
+                            cameraDistance = v;
+                            followCamera?.ApplyCameraDistance(cameraDistance);
+                        },
+                        v => $"{v:F1}m",
+                        uiScale);
+
+                    DrawCameraFeelRow(
+                        uiScale,
+                        cameraFeelMode,
+                        newMode =>
+                        {
+                            cameraFeelMode = newMode;
+                            ApplyCameraFeel();
+                        });
                 });
 
-                GUILayout.Space(10f);
+                GUILayout.Space(Mathf.RoundToInt(10f * uiScale));
 
-                DrawSettingsSection("Gameplay", () =>
+                // ── Gameplay ───────────────────────────────────────────
+                DrawSettingsSection("Gameplay", 4, uiScale, () =>
                 {
-                    DrawToggleRow("DEV Build Mode", devBuildMode, () => devBuildMode = !devBuildMode, "DEV", "RES");
+                    DrawToggleRow(
+                        "Pause Game (Journal)",
+                        pauseGameWhenJournalOpen,
+                        () =>
+                        {
+                            pauseGameWhenJournalOpen = !pauseGameWhenJournalOpen;
+
+                            // Apply immediately if the journal is already open.
+                            if (inGameMenuOpen)
+                            {
+                                if (pauseGameWhenJournalOpen)
+                                {
+                                    timeScaleBeforePause = Mathf.Approximately(Time.timeScale, 0f) ? timeScaleBeforePause : Time.timeScale;
+                                    Time.timeScale = 0f;
+                                }
+                                else
+                                {
+                                    Time.timeScale = timeScaleBeforePause;
+                                }
+                            }
+                        },
+                        uiScale);
+
+                    DrawToggleRow(
+                        "DEV Build Mode",
+                        devBuildMode,
+                        () => devBuildMode = !devBuildMode,
+                        uiScale,
+                        "DEV",
+                        "RES");
+
+                    // Not implemented as automatic behavior in the current codebase;
+                    // shown to keep the Settings panel complete.
+                    DrawInfoRow("Auto-equip on pickup", "Manual equip only", uiScale);
+                    DrawInfoRow("Interact mode", "Uses input action config", uiScale);
                 });
             }, "Session-level options");
 
+            // ── Preview (Right column) ─────────────────────────────────
             DrawJournalPanel(previewRect, "Preview", () =>
             {
                 GUILayout.Label("Live session preview", journalSubtitleStyle);
-                GUILayout.Space(8f);
+                GUILayout.Space(Mathf.RoundToInt(8f * uiScale));
 
-                Rect previewCardRect = GUILayoutUtility.GetRect(10f, 170f, GUILayout.ExpandWidth(true), GUILayout.Height(170f));
-                DrawBorderPanel(previewCardRect, journalCardTexture, 1f);
+                float hudCardHeight = Mathf.Clamp(240f * uiScale, 200f, 360f);
+                float sessionCardHeight = Mathf.Clamp(150f * uiScale, 120f, 260f);
 
-                Rect innerRect = new Rect(previewCardRect.x + 10f, previewCardRect.y + 8f, previewCardRect.width - 20f, previewCardRect.height - 16f);
+                Rect hudCardRect = GUILayoutUtility.GetRect(
+                    Mathf.RoundToInt(10f * uiScale),
+                    hudCardHeight,
+                    GUILayout.ExpandWidth(true),
+                    GUILayout.Height(hudCardHeight));
 
-                GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width, 18f), "HUD Preview", headingStyle);
-                GUI.DrawTexture(new Rect(innerRect.x, innerRect.y + 22f, innerRect.width, 2f), amberAccentTexture);
+                DrawBorderPanel(hudCardRect, journalCardTexture, 1f);
 
-                float barHeight = Mathf.Clamp(12f * currentUiScale, 9f, 15f);
-                GUI.Label(new Rect(innerRect.x, innerRect.y + 34f, innerRect.width, 16f), "UI Scale", journalBodyStyle);
+                Rect hudInner = new Rect(
+                    hudCardRect.x + 10f * uiScale,
+                    hudCardRect.y + 10f * uiScale,
+                    hudCardRect.width - (20f * uiScale),
+                    hudCardRect.height - (20f * uiScale));
 
-                Rect uiBarRect = new Rect(innerRect.x, innerRect.y + 54f, innerRect.width, barHeight);
-                DrawStatBar(uiBarRect, Mathf.Clamp01(currentUiScale / 1.5f), skillBarFillTexture, "UI", $"{currentUiScale:F2}x");
+                GUI.Label(new Rect(hudInner.x, hudInner.y, hudInner.width, 18f * uiScale), "HUD Preview", headingStyle);
+                GUI.DrawTexture(new Rect(hudInner.x, hudInner.y + 22f * uiScale, hudInner.width, 2f * uiScale), amberAccentTexture);
 
-                GUI.Label(
-                    new Rect(innerRect.x, innerRect.y + 78f, innerRect.width, 16f),
-                    $"Resolution: {Screen.width}x{Screen.height}",
+                float textTop = hudInner.y + 34f * uiScale;
+                GUI.Label(new Rect(hudInner.x, textTop, hudInner.width, 16f * uiScale),
+                    $"Resolution: {Screen.width}x{Screen.height}  |  Fullscreen: {(Screen.fullScreen ? "ON" : "OFF")}",
                     journalSubtitleStyle);
 
-                string crosshairState = showCrosshair ? "Crosshair On" : "Crosshair Off";
-                string hintsState = showActionHints ? "Hints On" : "Hints Off";
-                string cameraState = calmCameraEnabled ? "Calm Camera" : "Fast Camera";
-
-                GUI.Label(
-                    new Rect(innerRect.x, innerRect.y + 98f, innerRect.width, 16f),
-                    $"{crosshairState}  •  {hintsState}",
+                string hudFlags = $"{(showCrosshair ? "Crosshair" : "No Crosshair")}  •  {(showActionHints ? "Hints" : "No Hints")}  •  {(showFps ? "FPS On" : "FPS Off")}";
+                GUI.Label(new Rect(hudInner.x, textTop + 20f * uiScale, hudInner.width, 16f * uiScale),
+                    hudFlags,
                     smallMutedStyle);
 
-                GUI.Label(
-                    new Rect(innerRect.x, innerRect.y + 116f, innerRect.width, 16f),
-                    cameraState,
+                string cameraProfile =
+                    $"Camera: {cameraFeelMode}  |  Smoothing {cameraSmoothingMultiplier:F2}  |  Sens {cameraMouseSensitivity:F2}  |  Dist {cameraDistance:F1}m  |  InvertY {(cameraInvertY ? "ON" : "OFF")}";
+                GUI.Label(new Rect(hudInner.x, textTop + 38f * uiScale, hudInner.width, 16f * uiScale),
+                    cameraProfile,
                     smallMutedStyle);
 
-                Rect miniHudRect = new Rect(innerRect.x, innerRect.y + 138f, innerRect.width, 16f);
-                DrawMiniSettingsHudPreview(miniHudRect);
+                Rect uiBarRect = new Rect(
+                    hudInner.x,
+                    textTop + 58f * uiScale,
+                    hudInner.width,
+                    Mathf.RoundToInt(14f * uiScale));
+                DrawStatBar(
+                    uiBarRect,
+                    Mathf.Clamp01((currentUiScale * settingsUiScaleMultiplier) / 1.5f),
+                    skillBarFillTexture,
+                    "UI",
+                    $"{(currentUiScale * settingsUiScaleMultiplier):F2}x");
+
+                Rect miniHudRect = new Rect(
+                    hudInner.x,
+                    hudInner.yMax - (uiScale * 64f),
+                    hudInner.width,
+                    uiScale * 64f);
+                DrawMiniSettingsHudPreview(miniHudRect, uiScale);
+
+                GUILayout.Space(Mathf.RoundToInt(10f * uiScale));
+
+                Rect sessionCardRect = GUILayoutUtility.GetRect(
+                    Mathf.RoundToInt(10f * uiScale),
+                    sessionCardHeight,
+                    GUILayout.ExpandWidth(true),
+                    GUILayout.Height(sessionCardHeight));
+
+                DrawBorderPanel(sessionCardRect, journalCardTexture, 1f);
+
+                Rect sessionInner = new Rect(
+                    sessionCardRect.x + 10f * uiScale,
+                    sessionCardRect.y + 10f * uiScale,
+                    sessionCardRect.width - (20f * uiScale),
+                    sessionCardRect.height - (20f * uiScale));
+
+                GUI.Label(new Rect(sessionInner.x, sessionInner.y, sessionInner.width, 18f * uiScale), "Session Preview", headingStyle);
+                GUI.DrawTexture(new Rect(sessionInner.x, sessionInner.y + 22f * uiScale, sessionInner.width, 2f * uiScale), amberAccentTexture);
+
+                float sTop = sessionInner.y + 34f * uiScale;
+                GUI.Label(new Rect(sessionInner.x, sTop, sessionInner.width, 16f * uiScale),
+                    $"Journal Open: Always  |  Game Paused: {(pauseGameWhenJournalOpen ? "Yes" : "No")}",
+                    journalSubtitleStyle);
+                GUI.Label(new Rect(sessionInner.x, sTop + 20f * uiScale, sessionInner.width, 16f * uiScale),
+                    "Cursor: Unlocked UI  •  Look: Fully Paused",
+                    smallMutedStyle);
+                GUI.Label(new Rect(sessionInner.x, sTop + 38f * uiScale, sessionInner.width, 16f * uiScale),
+                    "Close with Esc / Tab (cursor locks + look resumes).",
+                    smallMutedStyle);
             }, "Visual feedback");
         }
 
-        private void DrawSettingsSection(string title, Action drawer)
+        private void DrawSettingsSection(string title, int rowCount, float uiScale, Action drawer)
         {
-            float sectionHeight = Mathf.Clamp(118f * currentUiScale, 104f, 140f);
-            Rect sectionRect = GUILayoutUtility.GetRect(10f, sectionHeight, GUILayout.ExpandWidth(true), GUILayout.Height(sectionHeight));
+            float rowHeight = Mathf.RoundToInt(44f * uiScale);
+            float headerHeight = Mathf.RoundToInt(50f * uiScale);
+            float sectionHeight = (rowCount * rowHeight) + headerHeight;
+            Rect sectionRect = GUILayoutUtility.GetRect(
+                Mathf.RoundToInt(10f * uiScale),
+                sectionHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(sectionHeight));
 
             DrawBorderPanel(sectionRect, hudCardTexture, 1f);
 
-            Rect innerRect = new Rect(sectionRect.x + 10f, sectionRect.y + 8f, sectionRect.width - 20f, sectionRect.height - 16f);
+            float padX = Mathf.RoundToInt(14f * uiScale);
+            float padY = Mathf.RoundToInt(12f * uiScale);
+            float titleH = Mathf.RoundToInt(20f * uiScale);
+            float accentYOffset = titleH + Mathf.RoundToInt(6f * uiScale);
+            float contentYOffset = accentYOffset + Mathf.RoundToInt(10f * uiScale);
 
-            GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width, 18f), title, headingStyle);
-            GUI.DrawTexture(new Rect(innerRect.x, innerRect.y + 22f, innerRect.width, 2f), amberAccentTexture);
+            Rect innerRect = new Rect(
+                sectionRect.x + padX,
+                sectionRect.y + padY,
+                sectionRect.width - (padX * 2f),
+                sectionRect.height - (padY * 2f));
 
-            Rect contentRect = new Rect(innerRect.x, innerRect.y + 30f, innerRect.width, innerRect.height - 30f);
+            GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width, titleH), title, headingStyle);
+            GUI.DrawTexture(new Rect(innerRect.x, innerRect.y + accentYOffset, innerRect.width, 2f), amberAccentTexture);
+
+            Rect contentRect = new Rect(innerRect.x, innerRect.y + contentYOffset, innerRect.width, innerRect.height - contentYOffset);
 
             GUILayout.BeginArea(contentRect);
             drawer?.Invoke();
             GUILayout.EndArea();
         }
 
-        private void DrawMiniSettingsHudPreview(Rect rect)
+        private void DrawMiniSettingsHudPreview(Rect rect, float uiScale)
         {
-            float cardWidth = Mathf.Min(158f, rect.width * 0.56f);
-            Rect hudRect = new Rect(rect.x, rect.y, cardWidth, rect.height);
-            DrawBorderPanel(hudRect, hudCardTexture, 1f);
+            DrawBorderPanel(rect, hudCardTexture, 1f);
 
-            Rect hpRect = new Rect(hudRect.x + 8f, hudRect.y + 5f, hudRect.width - 16f, 6f);
+            float padX = 10f * uiScale;
+            float padY = 8f * uiScale;
+
+            Rect hudRect = new Rect(
+                rect.x + padX,
+                rect.y + padY,
+                rect.width - (padX * 2f),
+                rect.height - (padY * 2f));
+
+            Rect hpRect = new Rect(hudRect.x, hudRect.y + 4f * uiScale, hudRect.width, 6f * uiScale);
             DrawStatBar(hpRect, 0.72f, statBarHpTexture, string.Empty, string.Empty);
 
-            Rect subBarRect = new Rect(hudRect.x + 8f, hudRect.y + 14f, hudRect.width * 0.56f, 4f);
+            Rect subBarRect = new Rect(hudRect.x, hudRect.y + 12f * uiScale, hudRect.width * 0.56f, 4f * uiScale);
             GUI.DrawTexture(subBarRect, statBarBgTexture);
-            GUI.DrawTexture(new Rect(subBarRect.x + 1f, subBarRect.y + 1f, Mathf.Max(0f, subBarRect.width - 2f) * 0.65f, subBarRect.height - 2f), statBarHungerTexture);
+            GUI.DrawTexture(
+                new Rect(
+                    subBarRect.x + 1f * uiScale,
+                    subBarRect.y + 1f * uiScale,
+                    Mathf.Max(0f, subBarRect.width - 2f * uiScale) * 0.65f,
+                    subBarRect.height - 2f * uiScale),
+                statBarHungerTexture);
 
-            Rect modeRect = new Rect(hudRect.x + 8f, hudRect.y + 22f, 54f, 12f);
+            Rect modeRect = new Rect(hudRect.x, hudRect.y + 20f * uiScale, 60f * uiScale, 12f * uiScale);
             Color previousColor = GUI.color;
             GUI.color = new Color(0.82f, 0.64f, 0.24f, 0.22f);
             GUI.DrawTexture(modeRect, modeBadgeTexture);
@@ -4321,35 +5429,72 @@ namespace MPSettlers.Gameplay
 
             if (showCrosshair)
             {
-                float cx = rect.xMax - 30f;
-                float cy = rect.center.y;
+                float cx = hudRect.xMax - 18f * uiScale;
+                float cy = hudRect.y + (hudRect.height * 0.45f);
 
-                GUI.DrawTexture(new Rect(cx - 6f, cy - 1f, 12f, 2f), amberAccentTexture);
-                GUI.DrawTexture(new Rect(cx - 1f, cy - 6f, 2f, 12f), amberAccentTexture);
+                GUI.DrawTexture(new Rect(cx - 6f * uiScale, cy - 1f * uiScale, 12f * uiScale, 2f * uiScale), amberAccentTexture);
+                GUI.DrawTexture(new Rect(cx - 1f * uiScale, cy - 6f * uiScale, 2f * uiScale, 12f * uiScale), amberAccentTexture);
+            }
+
+            if (showActionHints)
+            {
+                float hintLabelW = 70f * uiScale;
+                GUI.Label(
+                    new Rect(hudRect.xMax - hintLabelW, hudRect.yMax - 18f * uiScale, hintLabelW, 14f * uiScale),
+                    "HINTS",
+                    smallMutedStyle);
+                Rect hintLine = new Rect(hudRect.xMax - (40f * uiScale), hudRect.yMax - (8f * uiScale), 30f * uiScale, 2f * uiScale);
+                GUI.DrawTexture(hintLine, amberAccentTexture);
+            }
+
+            if (showFps)
+            {
+                GUI.Label(new Rect(hudRect.x, hudRect.yMax - 18f * uiScale, 60f * uiScale, 14f * uiScale), "FPS", smallMutedStyle);
             }
         }
 
-        private void DrawToggleRow(string label, bool isOn, Action onToggle, string onLabel = "ON", string offLabel = "OFF")
+        private void DrawToggleRow(
+            string label,
+            bool isOn,
+            Action onToggle,
+            float uiScale,
+            string onLabel = "ON",
+            string offLabel = "OFF")
         {
-            float rowHeight = Mathf.RoundToInt(38f * currentUiScale);
-            Rect rowRect = GUILayoutUtility.GetRect(10f, rowHeight, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
+            float rowHeight = Mathf.RoundToInt(44f * uiScale);
+            Rect rowRect = GUILayoutUtility.GetRect(
+                Mathf.RoundToInt(10f * uiScale),
+                rowHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(rowHeight));
 
             DrawBorderPanel(rowRect, hudCardTexture, 1f);
 
-            Rect innerRect = new Rect(rowRect.x + 10f, rowRect.y + 6f, rowRect.width - 20f, rowRect.height - 12f);
+            float padX = 10f * uiScale;
+            float padY = 6f * uiScale;
+            Rect innerRect = new Rect(
+                rowRect.x + padX,
+                rowRect.y + padY,
+                rowRect.width - (padX * 2f),
+                rowRect.height - (padY * 2f));
 
-            Rect labelRect = new Rect(innerRect.x, innerRect.y, innerRect.width - 104f, innerRect.height);
+            float toggleWidth = Mathf.RoundToInt(74f * uiScale);
+            float toggleHeight = Mathf.RoundToInt(26f * uiScale);
+            float labelReserved = toggleWidth + 28f * uiScale;
+            Rect labelRect = new Rect(innerRect.x, innerRect.y, innerRect.width - labelReserved, innerRect.height);
             GUI.Label(labelRect, label, settingsRowLabelStyle);
 
-            float toggleWidth = Mathf.RoundToInt(70f * currentUiScale);
-            float toggleHeight = Mathf.RoundToInt(24f * currentUiScale);
             Rect toggleRect = new Rect(
                 innerRect.xMax - toggleWidth,
                 innerRect.y + ((innerRect.height - toggleHeight) * 0.5f),
                 toggleWidth,
                 toggleHeight);
 
-            Rect stateDotRect = new Rect(toggleRect.x - 14f, innerRect.y + ((innerRect.height - 8f) * 0.5f), 8f, 8f);
+            Rect stateDotRect = new Rect(
+                toggleRect.x - 14f * uiScale,
+                innerRect.y + ((innerRect.height - 8f * uiScale) * 0.5f),
+                8f * uiScale,
+                8f * uiScale);
 
             Color previousColor = GUI.color;
             GUI.color = isOn
@@ -4365,8 +5510,142 @@ namespace MPSettlers.Gameplay
             {
                 onToggle?.Invoke();
             }
+        }
 
-            GUILayout.Space(4f);
+        private void DrawInfoRow(string label, string value, float uiScale)
+        {
+            float rowHeight = Mathf.RoundToInt(44f * uiScale);
+            Rect rowRect = GUILayoutUtility.GetRect(
+                Mathf.RoundToInt(10f * uiScale),
+                rowHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(rowHeight));
+
+            DrawBorderPanel(rowRect, hudCardTexture, 1f);
+
+            float padX = 10f * uiScale;
+            float padY = 6f * uiScale;
+            Rect innerRect = new Rect(
+                rowRect.x + padX,
+                rowRect.y + padY,
+                rowRect.width - (padX * 2f),
+                rowRect.height - (padY * 2f));
+
+            float labelWidth = innerRect.width * 0.50f;
+            Rect labelRect = new Rect(innerRect.x, innerRect.y, labelWidth, innerRect.height);
+            GUI.Label(labelRect, label, settingsRowLabelStyle);
+
+            Rect valueRect = new Rect(innerRect.x + labelWidth, innerRect.y, innerRect.width - labelWidth, innerRect.height);
+            GUI.Label(valueRect, value, journalBodyStyle);
+        }
+
+        private void DrawSliderRow(
+            string label,
+            float value,
+            float min,
+            float max,
+            Action<float> onValueChanged,
+            Func<float, string> valueText,
+            float uiScale)
+        {
+            float rowHeight = Mathf.RoundToInt(44f * uiScale);
+            Rect rowRect = GUILayoutUtility.GetRect(
+                Mathf.RoundToInt(10f * uiScale),
+                rowHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(rowHeight));
+
+            DrawBorderPanel(rowRect, hudCardTexture, 1f);
+
+            float padX = 10f * uiScale;
+            float padY = 6f * uiScale;
+            Rect innerRect = new Rect(
+                rowRect.x + padX,
+                rowRect.y + padY,
+                rowRect.width - (padX * 2f),
+                rowRect.height - (padY * 2f));
+
+            float labelWidth = Mathf.Clamp(innerRect.width * 0.46f, 140f * uiScale, 220f * uiScale);
+            float valueWidth = Mathf.Clamp(88f * uiScale, 70f * uiScale, 120f * uiScale);
+            float sliderLeft = innerRect.x + labelWidth + 10f * uiScale;
+            float sliderWidth = innerRect.xMax - sliderLeft - valueWidth - (6f * uiScale);
+            sliderWidth = Mathf.Max(40f * uiScale, sliderWidth);
+
+            Rect labelRect = new Rect(innerRect.x, innerRect.y, labelWidth, innerRect.height);
+            GUI.Label(labelRect, label, settingsRowLabelStyle);
+
+            Rect sliderRect = new Rect(
+                sliderLeft,
+                innerRect.y + ((innerRect.height - 10f * uiScale) * 0.5f),
+                sliderWidth,
+                10f * uiScale);
+
+            float newValue = GUI.HorizontalSlider(sliderRect, value, min, max);
+            Rect valueRect = new Rect(
+                sliderRect.xMax + 6f * uiScale,
+                innerRect.y,
+                valueWidth,
+                innerRect.height);
+
+            GUI.Label(valueRect, valueText != null ? valueText(newValue) : newValue.ToString("F2"), journalBodyStyle);
+
+            if (!Mathf.Approximately(newValue, value))
+            {
+                onValueChanged?.Invoke(newValue);
+            }
+        }
+
+        private void DrawCameraFeelRow(
+            float uiScale,
+            CameraFeelMode selected,
+            Action<CameraFeelMode> onChanged)
+        {
+            float rowHeight = Mathf.RoundToInt(44f * uiScale);
+            Rect rowRect = GUILayoutUtility.GetRect(
+                Mathf.RoundToInt(10f * uiScale),
+                rowHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(rowHeight));
+
+            DrawBorderPanel(rowRect, hudCardTexture, 1f);
+
+            float padX = 10f * uiScale;
+            float padY = 6f * uiScale;
+            Rect innerRect = new Rect(
+                rowRect.x + padX,
+                rowRect.y + padY,
+                rowRect.width - (padX * 2f),
+                rowRect.height - (padY * 2f));
+
+            float labelWidth = Mathf.Clamp(innerRect.width * 0.33f, 120f * uiScale, 180f * uiScale);
+            Rect labelRect = new Rect(innerRect.x, innerRect.y, labelWidth, innerRect.height);
+            GUI.Label(labelRect, "Camera Feel", settingsRowLabelStyle);
+
+            float buttonsX = innerRect.x + labelWidth + 6f * uiScale;
+            Rect buttonsRect = new Rect(buttonsX, innerRect.y, innerRect.width - labelWidth - 6f * uiScale, innerRect.height);
+
+            float gap = 6f * uiScale;
+            float buttonWidth = (buttonsRect.width - (gap * 2f)) / 3f;
+
+            CameraFeelMode[] modes = { CameraFeelMode.Calm, CameraFeelMode.Normal, CameraFeelMode.Responsive };
+            string[] labels = { "CALM", "NORM", "RESP" };
+
+            for (int i = 0; i < 3; i++)
+            {
+                bool isSelected = selected == modes[i];
+                GUIStyle style = isSelected ? journalActiveTabStyle : journalTabStyle;
+
+                Rect r = new Rect(
+                    buttonsRect.x + (i * (buttonWidth + gap)),
+                    innerRect.y + ((innerRect.height - 26f * uiScale) * 0.5f),
+                    buttonWidth,
+                    26f * uiScale);
+
+                if (GUI.Button(r, labels[i], style))
+                {
+                    onChanged?.Invoke(modes[i]);
+                }
+            }
         }
 
         private void DrawTrackingMap(Rect rect)
@@ -4456,10 +5735,10 @@ namespace MPSettlers.Gameplay
         private void DrawInventoryResourceStrip()
         {
             GUILayout.Label("Materials", headingStyle);
-            GUILayout.Space(6f);
+            GUILayout.Space(Mathf.RoundToInt(8f * currentUiScale));
 
-            float badgeWidth = Mathf.Clamp(84f * currentUiScale, 72f, 108f);
-            float badgeHeight = Mathf.Clamp(28f * currentUiScale, 24f, 34f);
+            float badgeWidth = Mathf.Clamp(90f * currentUiScale, 76f, 130f);
+            float badgeHeight = Mathf.Clamp(30f * currentUiScale, 26f, 38f);
 
             GUILayout.BeginHorizontal();
             DrawResourceBadge($"Wood: {wood}", badgeWidth, badgeHeight);
@@ -4481,8 +5760,8 @@ namespace MPSettlers.Gameplay
 
         private void DrawMiniItemSlot(string label, string value)
         {
-            float width = Mathf.Clamp(88f * currentUiScale, 74f, 112f);
-            float height = Mathf.Clamp(68f * currentUiScale, 58f, 84f);
+            float width = Mathf.Clamp(94f * currentUiScale, 78f, 140f);
+            float height = Mathf.Clamp(72f * currentUiScale, 62f, 100f);
             bool isEmpty = string.Equals(value, "Empty", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "0", StringComparison.Ordinal);
 
@@ -4692,9 +5971,9 @@ namespace MPSettlers.Gameplay
             bool currentlyEquipped = IsItemEquipped(entry.itemId);
 
             float cardHeight = Mathf.Clamp(
-                isEquipment ? 220f * currentUiScale : 156f * currentUiScale,
-                isEquipment ? 190f : 140f,
-                isEquipment ? 310f : 220f);
+                isEquipment ? 230f * currentUiScale : 164f * currentUiScale,
+                isEquipment ? 200f : 148f,
+                isEquipment ? 360f : 260f);
 
             Rect cardRect = GUILayoutUtility.GetRect(
                 10f, cardHeight,
@@ -4835,12 +6114,12 @@ namespace MPSettlers.Gameplay
             GUILayout.EndHorizontal();
 
             // ── Stat summary ──────────────────────────────────────────
-            GUILayout.Space(12f);
+            GUILayout.Space(Mathf.RoundToInt(14f * currentUiScale));
             float reduction = GetTotalDamageReduction();
             int dmgBonus = GetWeaponDamageBonus();
             float speed = GetEquipmentSpeedMultiplier();
 
-            float statHeight = Mathf.Clamp(72f * currentUiScale, 64f, 105f);
+            float statHeight = Mathf.Clamp(76f * currentUiScale, 66f, 120f);
             Rect statCardRect = GUILayoutUtility.GetRect(
                 10f, statHeight,
                 GUILayout.ExpandWidth(true),
@@ -4867,8 +6146,8 @@ namespace MPSettlers.Gameplay
 
         private void DrawEquipSlotWidget(string slotKey, string label)
         {
-            float width = Mathf.Clamp(84f * currentUiScale, 72f, 130f);
-            float height = Mathf.Clamp(72f * currentUiScale, 62f, 105f);
+            float width = Mathf.Clamp(90f * currentUiScale, 76f, 160f);
+            float height = Mathf.Clamp(78f * currentUiScale, 66f, 125f);
 
             bool hasItem = equippedSlots.TryGetValue(slotKey, out EquippedSlot slot)
                            && !slot.IsEmpty;
@@ -4996,7 +6275,7 @@ namespace MPSettlers.Gameplay
 
             bool equipped = IsItemEquipped(entry.itemId);
 
-            float btnHeight = Mathf.Clamp(36f * currentUiScale, 30f, 52f);
+            float btnHeight = Mathf.Clamp(38f * currentUiScale, 32f, 56f);
             Rect btnRect = GUILayoutUtility.GetRect(
                 10f, btnHeight,
                 GUILayout.ExpandWidth(true),
@@ -5036,73 +6315,486 @@ namespace MPSettlers.Gameplay
             }
         }
 
-        private void DrawCraftingStub()
+        private void HandleContainerStorageNavigation()
         {
-            float panelHeight = Mathf.Clamp(110f * currentUiScale, 96f, 130f);
-            Rect panelRect = GUILayoutUtility.GetRect(
-                10f, panelHeight,
-                GUILayout.ExpandWidth(true),
-                GUILayout.Height(panelHeight));
-
-            DrawBorderPanel(panelRect, journalCardTexture, 1f);
-
-            Rect inner = new Rect(
-                panelRect.x + 12f,
-                panelRect.y + 10f,
-                panelRect.width - 24f,
-                panelRect.height - 20f);
-
-            GUI.Label(
-                new Rect(inner.x, inner.y, inner.width, 18f),
-                "Crafting", headingStyle);
-
-            GUI.DrawTexture(
-                new Rect(inner.x, inner.y + 22f, inner.width, 1f),
-                amberAccentTexture);
-
-            // Check if player has basic crafting resources
-            bool canCraftBasic = wood >= 5 && stone >= 3;
-
-            GUI.Label(
-                new Rect(inner.x, inner.y + 30f, inner.width, 16f),
-                $"Wood: {wood}/5   Stone: {stone}/3",
-                canCraftBasic ? journalBodyStyle : smallMutedStyle);
-
-            GUI.Label(
-                new Rect(inner.x, inner.y + 48f, inner.width, 28f),
-                canCraftBasic
-                    ? "Resources available. Crafting stations\ncoming in a future update."
-                    : "Gather more resources to unlock crafting.\nSettler merchants will trade gear too.",
-                journalSubtitleStyle);
-
-            // Placeholder craft button — disabled until crafting is built
-            float btnHeight = Mathf.Clamp(28f * currentUiScale, 24f, 34f);
-            Rect btnRect = new Rect(
-                inner.x,
-                inner.yMax - btnHeight,
-                inner.width,
-                btnHeight);
-
-            Color prev = GUI.color;
-            GUI.color = canCraftBasic
-                ? new Color(1f, 1f, 1f, 0.9f)
-                : new Color(1f, 1f, 1f, 0.3f);
-
-            if (GUI.Button(btnRect, "Open Crafting  ( coming soon )", journalTabStyle)
-                && canCraftBasic)
+            if (Keyboard.current == null)
             {
-                SetStatusMessage("Crafting stations arrive with the settler economy update.");
+                return;
             }
 
-            GUI.color = prev;
+            if (Keyboard.current.escapeKey.wasPressedThisFrame || Keyboard.current.tabKey.wasPressedThisFrame)
+            {
+                CloseContainerStorage();
+            }
+        }
+
+        private void DrawContainerStoragePanel()
+        {
+            if (!TryGetActiveContainer(out PlacedWorldObject placedObject, out ContainerRuntimeStorage containerStorage, out int capacity))
+            {
+                CloseContainerStorage();
+                return;
+            }
+
+            float used = GetContainerUsedCapacity(containerStorage);
+            string containerName = GetContainerDisplayName(placedObject);
+
+            float shellMargin = Mathf.Clamp(18f * currentUiScale, 14f, 28f);
+            Rect shellRect = new(
+                shellMargin,
+                shellMargin,
+                Screen.width - (shellMargin * 2f),
+                Screen.height - (shellMargin * 2f));
+
+            DrawBorderPanel(shellRect, journalShellTexture, 2f);
+
+            float pad = Mathf.RoundToInt(18f * currentUiScale);
+            Rect inner = new(shellRect.x + pad, shellRect.y + pad, shellRect.width - (pad * 2f), shellRect.height - (pad * 2f));
+            float titleH = Mathf.Clamp(30f * currentUiScale, 24f, 36f);
+
+            GUI.Label(new Rect(inner.x, inner.y, inner.width, titleH), $"{containerName} Storage", journalTitleStyle);
+            GUI.DrawTexture(new Rect(inner.x, inner.y + titleH + 4f, inner.width, 2f), amberAccentTexture);
+            GUI.Label(new Rect(inner.x, inner.y + titleH + 10f, inner.width, 18f * currentUiScale),
+                $"Container ID: {placedObject.UniqueId}  |  Capacity: {used}/{capacity}",
+                journalSubtitleStyle);
+
+            float controlsTop = inner.y + titleH + 32f;
+            float controlsH = Mathf.Clamp(34f * currentUiScale, 28f, 42f);
+            Rect controlsRect = new(inner.x, controlsTop, inner.width, controlsH);
+            DrawContainerTransferControls(controlsRect);
+
+            float columnsTop = controlsRect.yMax + Mathf.RoundToInt(8f * currentUiScale);
+            float columnsH = inner.yMax - columnsTop - Mathf.RoundToInt(40f * currentUiScale);
+            float gutter = Mathf.RoundToInt(12f * currentUiScale);
+            float colWidth = (inner.width - gutter) * 0.5f;
+            Rect playerRect = new(inner.x, columnsTop, colWidth, columnsH);
+            Rect containerRect = new(playerRect.xMax + gutter, columnsTop, colWidth, columnsH);
+
+            DrawContainerPlayerSide(playerRect, containerStorage, capacity);
+            DrawContainerStoredSide(containerRect, containerStorage, capacity);
+
+            Rect footerRect = new(inner.x, inner.yMax - Mathf.RoundToInt(30f * currentUiScale), inner.width, Mathf.RoundToInt(24f * currentUiScale));
+            GUI.Label(footerRect, "Esc / Tab close", smallMutedStyle);
+        }
+
+        private void DrawContainerTransferControls(Rect rect)
+        {
+            GUILayout.BeginArea(rect);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Transfer Amount", journalBodyStyle, GUILayout.Width(150f * currentUiScale));
+
+            int[] values = { 1, 5, 10, 20 };
+            for (int i = 0; i < values.Length; i++)
+            {
+                bool selected = containerTransferAmount == values[i];
+                if (GUILayout.Button(values[i].ToString(), selected ? journalActiveTabStyle : journalTabStyle, GUILayout.Width(52f * currentUiScale)))
+                {
+                    containerTransferAmount = values[i];
+                }
+            }
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Close", journalTabStyle, GUILayout.Width(90f * currentUiScale)))
+            {
+                CloseContainerStorage();
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        private void DrawContainerPlayerSide(Rect rect, ContainerRuntimeStorage storage, int capacity)
+        {
+            DrawBorderPanel(rect, journalCardTexture, 1f);
+            Rect inner = new(rect.x + 10f * currentUiScale, rect.y + 10f * currentUiScale, rect.width - 20f * currentUiScale, rect.height - 20f * currentUiScale);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width, 20f * currentUiScale), "Player Inventory", headingStyle);
+            GUI.DrawTexture(new Rect(inner.x, inner.y + 22f * currentUiScale, inner.width, 1f), amberAccentTexture);
+
+            Rect body = new(inner.x, inner.y + 28f * currentUiScale, inner.width, inner.height - 28f * currentUiScale);
+            GUILayout.BeginArea(body);
+            DrawContainerResourceRow("Wood", wood, storage.wood, () => DepositResourceToContainer(ResourceType.Wood, storage, capacity), () => WithdrawResourceFromContainer(ResourceType.Wood, storage));
+            DrawContainerResourceRow("Stone", stone, storage.stone, () => DepositResourceToContainer(ResourceType.Stone, storage, capacity), () => WithdrawResourceFromContainer(ResourceType.Stone, storage));
+            DrawContainerResourceRow("Food", food, storage.food, () => DepositResourceToContainer(ResourceType.Food, storage, capacity), () => WithdrawResourceFromContainer(ResourceType.Food, storage));
+
+            GUILayout.Space(6f);
+            GUI.DrawTexture(GUILayoutUtility.GetRect(10f, 1f, GUILayout.ExpandWidth(true), GUILayout.Height(1f)), amberAccentTexture);
+            GUILayout.Label("Item Stacks", smallMutedStyle);
+            containerPlayerItemsScroll = GUILayout.BeginScrollView(containerPlayerItemsScroll, GUILayout.Height(Mathf.Max(80f, body.height - 148f * currentUiScale)));
+            DrawContainerItemTransferRows(storedFoodInventory, storage.storedFoodItems, capacity, depositDirection: true);
+            DrawContainerItemTransferRows(storedWeaponInventory, storage.storedWeapons, capacity, depositDirection: true);
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private void DrawContainerStoredSide(Rect rect, ContainerRuntimeStorage storage, int capacity)
+        {
+            DrawBorderPanel(rect, journalCardTexture, 1f);
+            Rect inner = new(rect.x + 10f * currentUiScale, rect.y + 10f * currentUiScale, rect.width - 20f * currentUiScale, rect.height - 20f * currentUiScale);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width, 20f * currentUiScale), "Container Contents", headingStyle);
+            GUI.DrawTexture(new Rect(inner.x, inner.y + 22f * currentUiScale, inner.width, 1f), amberAccentTexture);
+
+            int used = GetContainerUsedCapacity(storage);
+            GUI.Label(new Rect(inner.x, inner.y + 26f * currentUiScale, inner.width, 18f * currentUiScale), $"Used: {used}/{capacity}", journalSubtitleStyle);
+
+            Rect body = new(inner.x, inner.y + 46f * currentUiScale, inner.width, inner.height - 46f * currentUiScale);
+            GUILayout.BeginArea(body);
+            GUILayout.Label($"Wood: {storage.wood}", journalBodyStyle);
+            GUILayout.Label($"Stone: {storage.stone}", journalBodyStyle);
+            GUILayout.Label($"Food: {storage.food}", journalBodyStyle);
+
+            GUILayout.Space(6f);
+            GUI.DrawTexture(GUILayoutUtility.GetRect(10f, 1f, GUILayout.ExpandWidth(true), GUILayout.Height(1f)), amberAccentTexture);
+            GUILayout.Label("Stored Item Stacks", smallMutedStyle);
+            containerStoredItemsScroll = GUILayout.BeginScrollView(containerStoredItemsScroll, GUILayout.Height(Mathf.Max(90f, body.height - 112f * currentUiScale)));
+            DrawContainerItemTransferRows(storage.storedFoodItems, storedFoodInventory, capacity, depositDirection: false);
+            DrawContainerItemTransferRows(storage.storedWeapons, storedWeaponInventory, capacity, depositDirection: false);
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        private void DrawContainerResourceRow(string label, int carried, int stored, Action onDeposit, Action onWithdraw)
+        {
+            float btnH = Mathf.Clamp(26f * currentUiScale, 22f, 34f);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{label}: {carried} / {stored}", journalBodyStyle, GUILayout.Width(150f * currentUiScale));
+            if (GUILayout.Button("Deposit", journalTabStyle, GUILayout.Height(btnH), GUILayout.Width(80f * currentUiScale)) && carried > 0)
+            {
+                onDeposit?.Invoke();
+            }
+
+            if (GUILayout.Button("Take", journalTabStyle, GUILayout.Height(btnH), GUILayout.Width(70f * currentUiScale)) && stored > 0)
+            {
+                onWithdraw?.Invoke();
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawContainerItemTransferRows(Dictionary<string, int> sourceInventory, Dictionary<string, int> targetInventory, int capacity, bool depositDirection)
+        {
+            foreach (KeyValuePair<string, int> pair in sourceInventory.OrderBy(k => k.Key).ToList())
+            {
+                if (pair.Value <= 0)
+                {
+                    continue;
+                }
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"{GetDisplayNameForItemId(pair.Key)} x{pair.Value}", smallMutedStyle, GUILayout.Width(190f * currentUiScale));
+                string buttonLabel = depositDirection ? "Deposit" : "Take";
+                if (GUILayout.Button(buttonLabel, journalTabStyle, GUILayout.Width(80f * currentUiScale)))
+                {
+                    if (depositDirection)
+                    {
+                        DepositItemToContainer(pair.Key, sourceInventory, targetInventory, capacity);
+                    }
+                    else
+                    {
+                        WithdrawItemFromContainer(pair.Key, sourceInventory, targetInventory);
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        private void DepositResourceToContainer(ResourceType resourceType, ContainerRuntimeStorage containerStorage, int capacity)
+        {
+            if (containerStorage == null)
+            {
+                return;
+            }
+
+            int free = Mathf.Max(0, capacity - GetContainerUsedCapacity(containerStorage));
+            if (free <= 0)
+            {
+                SetStatusMessage("Container is full.");
+                return;
+            }
+
+            int requested = Mathf.Max(1, containerTransferAmount);
+            int moved = 0;
+            switch (resourceType)
+            {
+                case ResourceType.Wood:
+                    moved = Mathf.Min(requested, Mathf.Min(free, wood));
+                    wood -= moved;
+                    containerStorage.wood += moved;
+                    break;
+                case ResourceType.Stone:
+                    moved = Mathf.Min(requested, Mathf.Min(free, stone));
+                    stone -= moved;
+                    containerStorage.stone += moved;
+                    break;
+                case ResourceType.Food:
+                    moved = Mathf.Min(requested, Mathf.Min(free, food));
+                    food -= moved;
+                    containerStorage.food += moved;
+                    break;
+            }
+
+            if (moved > 0)
+            {
+                SetStatusMessage($"Deposited {moved} {resourceType.ToString().ToLowerInvariant()}.");
+                SaveWorld();
+            }
+        }
+
+        private void WithdrawResourceFromContainer(ResourceType resourceType, ContainerRuntimeStorage containerStorage)
+        {
+            if (containerStorage == null)
+            {
+                return;
+            }
+
+            int requested = Mathf.Max(1, containerTransferAmount);
+            int moved = 0;
+            switch (resourceType)
+            {
+                case ResourceType.Wood:
+                    moved = Mathf.Min(requested, containerStorage.wood);
+                    containerStorage.wood -= moved;
+                    wood += moved;
+                    break;
+                case ResourceType.Stone:
+                    moved = Mathf.Min(requested, containerStorage.stone);
+                    containerStorage.stone -= moved;
+                    stone += moved;
+                    break;
+                case ResourceType.Food:
+                    moved = Mathf.Min(requested, containerStorage.food);
+                    containerStorage.food -= moved;
+                    food += moved;
+                    break;
+            }
+
+            if (moved > 0)
+            {
+                SetStatusMessage($"Withdrew {moved} {resourceType.ToString().ToLowerInvariant()}.");
+                SaveWorld();
+            }
+        }
+
+        private void DepositItemToContainer(string itemId, Dictionary<string, int> sourceInventory, Dictionary<string, int> containerInventory, int capacity)
+        {
+            if (string.IsNullOrWhiteSpace(itemId) || sourceInventory == null || containerInventory == null)
+            {
+                return;
+            }
+
+            if (!sourceInventory.TryGetValue(itemId, out int available) || available <= 0)
+            {
+                return;
+            }
+
+            if (!TryGetActiveContainer(out _, out ContainerRuntimeStorage storage, out _))
+            {
+                return;
+            }
+
+            int free = Mathf.Max(0, capacity - GetContainerUsedCapacity(storage));
+            if (free <= 0)
+            {
+                SetStatusMessage("Container is full.");
+                return;
+            }
+
+            int move = Mathf.Min(available, Mathf.Min(containerTransferAmount, free));
+            if (move <= 0)
+            {
+                return;
+            }
+
+            RemoveInventoryCount(sourceInventory, itemId, move);
+            AddInventoryCount(containerInventory, itemId, move);
+            SetStatusMessage($"Deposited {move}x {GetDisplayNameForItemId(itemId)}.");
+            SaveWorld();
+        }
+
+        private void WithdrawItemFromContainer(string itemId, Dictionary<string, int> containerInventory, Dictionary<string, int> targetInventory)
+        {
+            if (string.IsNullOrWhiteSpace(itemId) || containerInventory == null || targetInventory == null)
+            {
+                return;
+            }
+
+            if (!containerInventory.TryGetValue(itemId, out int available) || available <= 0)
+            {
+                return;
+            }
+
+            int move = Mathf.Min(available, Mathf.Max(1, containerTransferAmount));
+            RemoveInventoryCount(containerInventory, itemId, move);
+            AddInventoryCount(targetInventory, itemId, move);
+            SetStatusMessage($"Withdrew {move}x {GetDisplayNameForItemId(itemId)}.");
+            SaveWorld();
+        }
+
+        private ContainerStorageSaveData CaptureContainerStorage(PlacedWorldObject placedObject)
+        {
+            if (placedObject == null || !TryGetContainerDefinition(placedObject, out _, out _))
+            {
+                return null;
+            }
+
+            ContainerRuntimeStorage runtime = GetOrCreateContainerStorage(placedObject.UniqueId);
+            return new ContainerStorageSaveData
+            {
+                wood = Mathf.Max(0, runtime.wood),
+                stone = Mathf.Max(0, runtime.stone),
+                food = Mathf.Max(0, runtime.food),
+                storedFoodItems = runtime.storedFoodItems
+                    .Where(entry => entry.Value > 0)
+                    .Select(entry => new InventoryEntryData { itemId = entry.Key, count = entry.Value })
+                    .ToList(),
+                storedWeapons = runtime.storedWeapons
+                    .Where(entry => entry.Value > 0)
+                    .Select(entry => new InventoryEntryData { itemId = entry.Key, count = entry.Value })
+                    .ToList()
+            };
+        }
+
+        private void RestoreContainerStorage(ContainerRuntimeStorage runtimeStorage, ContainerStorageSaveData saveData)
+        {
+            if (runtimeStorage == null)
+            {
+                return;
+            }
+
+            runtimeStorage.wood = Mathf.Max(0, saveData?.wood ?? 0);
+            runtimeStorage.stone = Mathf.Max(0, saveData?.stone ?? 0);
+            runtimeStorage.food = Mathf.Max(0, saveData?.food ?? 0);
+            RestoreInventory(runtimeStorage.storedFoodItems, saveData?.storedFoodItems);
+            RestoreInventory(runtimeStorage.storedWeapons, saveData?.storedWeapons);
+        }
+
+        private void DrawCraftingPanel()
+        {
+            if (craftingRecipes == null || craftingRecipes.Count == 0)
+            {
+                GUILayout.Label("No recipes available.", journalSubtitleStyle);
+                return;
+            }
+
+            selectedRecipeIndex = Mathf.Clamp(selectedRecipeIndex, 0, craftingRecipes.Count - 1);
+            CraftingRecipe selected = craftingRecipes[selectedRecipeIndex];
+            bool canCraft = CanAffordRecipe(selected);
+
+            // ── Recipe list (scrollable) ──────────────────────────────
+            GUILayout.Label("Recipes", headingStyle);
+            GUILayout.Space(4f);
+
+            float recipeRowH = Mathf.Clamp(30f * currentUiScale, 26f, 42f);
+            float listHeight = Mathf.Min(craftingRecipes.Count * (recipeRowH + 2f), 200f * currentUiScale);
+
+            craftingScrollPos = GUILayout.BeginScrollView(
+                craftingScrollPos,
+                false, false,
+                GUILayout.Height(listHeight));
+
+            for (int i = 0; i < craftingRecipes.Count; i++)
+            {
+                CraftingRecipe recipe = craftingRecipes[i];
+                bool affordable = CanAffordRecipe(recipe);
+                bool isSelected = i == selectedRecipeIndex;
+
+                Rect rowRect = GUILayoutUtility.GetRect(
+                    10f, recipeRowH,
+                    GUILayout.ExpandWidth(true),
+                    GUILayout.Height(recipeRowH));
+
+                Color prev = GUI.color;
+
+                if (isSelected)
+                {
+                    GUI.color = new Color(0.82f, 0.64f, 0.24f, 0.18f);
+                    GUI.DrawTexture(rowRect, modeBadgeTexture);
+                }
+
+                GUI.color = affordable
+                    ? new Color(0.85f, 0.75f, 0.55f, 1f)
+                    : new Color(0.50f, 0.45f, 0.40f, 0.70f);
+
+                string marker = isSelected ? "▸ " : "  ";
+                string affordTag = affordable ? "" : "  [need materials]";
+                GUI.Label(
+                    new Rect(rowRect.x + 6f, rowRect.y, rowRect.width - 12f, rowRect.height),
+                    $"{marker}{recipe.displayName}{affordTag}",
+                    journalBodyStyle);
+
+                GUI.color = prev;
+
+                if (Event.current.type == EventType.MouseDown &&
+                    Event.current.button == 0 &&
+                    rowRect.Contains(Event.current.mousePosition))
+                {
+                    selectedRecipeIndex = i;
+                    Event.current.Use();
+                }
+            }
+
+            GUILayout.EndScrollView();
+
+            // ── Selected recipe details ───────────────────────────────
+            GUILayout.Space(8f);
+            GUI.DrawTexture(
+                GUILayoutUtility.GetRect(10f, 1f, GUILayout.ExpandWidth(true), GUILayout.Height(1f)),
+                amberAccentTexture);
+            GUILayout.Space(6f);
+
+            GUILayout.Label(selected.displayName, headingStyle);
+            GUILayout.Space(2f);
+            GUILayout.Label(selected.description, journalSubtitleStyle);
+            GUILayout.Space(6f);
+
+            string costText = GetRecipeCostDisplay(selected);
+            GUILayout.Label($"Cost: {costText}", canCraft ? journalBodyStyle : smallMutedStyle);
+
+            string resultName = GetDisplayNameForItemId(selected.resultItemId);
+            string resultType = selected.resultIsStructure ? "Structure (build menu)" : "Item (inventory)";
+            GUILayout.Label($"Result: {selected.resultCount}x {resultName}  ({resultType})", journalBodyStyle);
+
+            // Resource summary
+            GUILayout.Space(4f);
+            GUILayout.Label(
+                $"Available: {wood} wood  ·  {stone} stone  ·  {food} food",
+                smallMutedStyle);
+
+            // ── Craft button ──────────────────────────────────────────
+            GUILayout.Space(8f);
+            float btnH = Mathf.Clamp(38f * currentUiScale, 32f, 52f);
+            Rect btnRect = GUILayoutUtility.GetRect(
+                10f, btnH,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(btnH));
+
+            Color prevBtn = GUI.color;
+            GUI.color = canCraft
+                ? new Color(0.145f, 0.176f, 0.078f, 0.95f)
+                : new Color(0.10f, 0.10f, 0.10f, 0.50f);
+            GUI.DrawTexture(btnRect, modeBadgeTexture);
+
+            GUI.color = canCraft
+                ? new Color(0.788f, 0.659f, 0.298f, 0.55f)
+                : new Color(0.40f, 0.35f, 0.30f, 0.30f);
+            GUI.DrawTexture(new Rect(btnRect.x, btnRect.y, btnRect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(btnRect.x, btnRect.yMax - 1f, btnRect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(btnRect.x, btnRect.y, 1f, btnRect.height), amberAccentTexture);
+            GUI.DrawTexture(new Rect(btnRect.xMax - 1f, btnRect.y, 1f, btnRect.height), amberAccentTexture);
+            GUI.color = prevBtn;
+
+            string craftLabel = canCraft ? $"Craft {selected.displayName}" : "Insufficient Materials";
+
+            if (GUI.Button(btnRect, craftLabel, journalActiveTabStyle) && canCraft)
+            {
+                CraftRecipe(selected);
+            }
         }
 
         private string GetInventoryEntryDescription(JournalInventoryEntry entry)
         {
             return entry.categoryLabel switch
             {
-                "Food" => "Food items can be stored here and consumed in the field for recovery when healing is available.",
-                "Weapon" => "Weapons stay stored in the journal inventory until the equipment and combat layers come online.",
+                "Food" => "Food items can be consumed in the field for recovery. Use Storage to deposit extras.",
+                "Gear" => "Weapons and armor stored in your inventory.",
+                "Resource" => "Raw material carried on your person.",
                 _ => "A stored item in the settler journal."
             };
         }
@@ -5185,7 +6877,7 @@ namespace MPSettlers.Gameplay
 
             tier = Mathf.Clamp(tier, 0, maxTier);
 
-            float cardHeight = Mathf.Clamp(92f * currentUiScale, 80f, 110f);
+            float cardHeight = Mathf.Clamp(98f * currentUiScale, 84f, 130f);
             Rect cardRect = GUILayoutUtility.GetRect(10f, cardHeight, GUILayout.ExpandWidth(true), GUILayout.Height(cardHeight));
 
             DrawBorderPanel(cardRect, journalCardTexture, 1f);
@@ -5458,7 +7150,7 @@ namespace MPSettlers.Gameplay
 
         private void DrawFavoriteEntry(int slotIndex)
         {
-            float rowHeight = Mathf.Clamp(50f * currentUiScale, 44f, 58f);
+            float rowHeight = Mathf.Clamp(54f * currentUiScale, 46f, 68f);
             Rect rowRect = GUILayoutUtility.GetRect(10f, rowHeight, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
 
             DrawBorderPanel(rowRect, journalCardTexture, 1f);
@@ -5662,14 +7354,36 @@ namespace MPSettlers.Gameplay
                 return;
             }
 
-            if (calmCameraEnabled)
+            float baseFollowSmoothTime;
+            float baseRotationSmoothSpeed;
+
+            switch (cameraFeelMode)
             {
-                followCamera.ApplyRuntimeTuning(0.05f, 24f);
+                case CameraFeelMode.Calm:
+                    baseFollowSmoothTime = 0.05f;
+                    baseRotationSmoothSpeed = 24f;
+                    break;
+
+                case CameraFeelMode.Normal:
+                    baseFollowSmoothTime = 0.035f;
+                    baseRotationSmoothSpeed = 30f;
+                    break;
+
+                case CameraFeelMode.Responsive:
+                    baseFollowSmoothTime = 0.025f;
+                    baseRotationSmoothSpeed = 36f;
+                    break;
+
+                default:
+                    baseFollowSmoothTime = 0.035f;
+                    baseRotationSmoothSpeed = 30f;
+                    break;
             }
-            else
-            {
-                followCamera.ApplyRuntimeTuning(0.035f, 30f);
-            }
+
+            float smoothing = Mathf.Clamp(cameraSmoothingMultiplier, 0.6f, 1.6f);
+            followCamera.ApplyRuntimeTuning(
+                baseFollowSmoothTime * smoothing,
+                baseRotationSmoothSpeed / smoothing);
         }
 
         private string GetContextPrompt()
@@ -5680,6 +7394,14 @@ namespace MPSettlers.Gameplay
                 BuildCatalogItem selectedItem = GetSelectedItem();
                 string selectedName = selectedItem != null ? selectedItem.displayName : "None";
                 return $"Build Menu  |  {modeName}  |  {selectedName}\nA/D tab  W/S item  F favorite  Enter/LMB choose  L toggle mode  B/Esc close";
+            }
+
+            if (placementActive && plantingMode)
+            {
+                string seedName = GetDisplayNameForItemId(plantingSeedId);
+                storedFoodInventory.TryGetValue(plantingSeedId, out int seedsLeft);
+                string validity = placementHasValidTarget ? "Ready to plant." : "Move away from the player.";
+                return $"Planting {seedName}  |  {seedsLeft} remaining\n{validity}  LMB/Enter plant  R rotate  Esc/RMB cancel";
             }
 
             if (placementActive)
@@ -5712,6 +7434,13 @@ namespace MPSettlers.Gameplay
                 return $"Hold Interact to {targetedPickup.GetInteractionLabel()}{progressText}";
             }
 
+            if (targetedPlacedObject != null && TryGetContainerDefinition(targetedPlacedObject, out string containerLabel, out int capacity))
+            {
+                ContainerRuntimeStorage storage = GetOrCreateContainerStorage(targetedPlacedObject.UniqueId);
+                int used = GetContainerUsedCapacity(storage);
+                return $"Press Interact to open {containerLabel} storage ({used}/{capacity})";
+            }
+
             if (targetedRenewable != null)
             {
                 if (targetedRenewable.IsHarvestable)
@@ -5741,6 +7470,13 @@ namespace MPSettlers.Gameplay
                 yield break;
             }
 
+            if (placementActive && plantingMode)
+            {
+                yield return "Planting mode";
+                yield return "Enter/LMB plant | R rotate | Esc cancel";
+                yield break;
+            }
+
             if (placementActive)
             {
                 yield return "Placement active";
@@ -5766,7 +7502,7 @@ namespace MPSettlers.Gameplay
             }
 
             yield return "Explore and build";
-            yield return "B build | X delete | H heal";
+            yield return "B build | X delete | H heal | P plant";
             yield return "Wheel or 1-0 selects hotbar";
         }
 
@@ -5775,8 +7511,8 @@ namespace MPSettlers.Gameplay
             bool isSelected = selectedCategory == category;
             string label = category.ToString();
 
-            float buttonHeight = Mathf.Clamp(34f * currentUiScale, 30f, 40f);
-            float minWidth = Mathf.Clamp(92f * currentUiScale, 84f, 126f);
+            float buttonHeight = Mathf.Clamp(36f * currentUiScale, 30f, 48f);
+            float minWidth = Mathf.Clamp(96f * currentUiScale, 86f, 140f);
 
             Rect buttonRect = GUILayoutUtility.GetRect(
                 minWidth,
@@ -5867,15 +7603,15 @@ namespace MPSettlers.Gameplay
 
         private void DrawStatBarRow(string label, float fraction, Texture2D fillTexture, string valueText, float barHeight)
         {
-            float rowHeight = Mathf.Max(barHeight + 4f, 18f);
+            float rowHeight = Mathf.Max(barHeight + 6f, Mathf.RoundToInt(20f * currentUiScale));
             Rect rowRect = GUILayoutUtility.GetRect(
                 10f, rowHeight,
                 GUILayout.ExpandWidth(true),
                 GUILayout.Height(rowHeight));
 
-            float labelWidth = Mathf.Clamp(rowRect.width * 0.24f, 52f, 92f);
-            float valueWidth = Mathf.Clamp(rowRect.width * 0.26f, 56f, 120f);
-            float gap = 8f;
+            float labelWidth = Mathf.Clamp(rowRect.width * 0.22f, 52f, 100f);
+            float valueWidth = Mathf.Clamp(rowRect.width * 0.28f, 60f, 140f);
+            float gap = Mathf.RoundToInt(10f * currentUiScale);
 
             GUI.Label(
                 new Rect(rowRect.x, rowRect.y - 1f, labelWidth, rowRect.height + 2f),
@@ -5919,32 +7655,34 @@ namespace MPSettlers.Gameplay
         {
             Color prev = GUI.color;
 
-            GUI.color = new Color(0f, 0f, 0f, 0.35f);
+            GUI.color = new Color(0f, 0f, 0f, 0.32f);
             GUI.DrawTexture(
                 new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height),
                 panelTexture);
 
-            GUI.color = new Color(0.067f, 0.078f, 0.043f, 0.92f);
+            GUI.color = new Color(0.067f, 0.078f, 0.043f, 0.94f);
             GUI.DrawTexture(rect, hudCardTexture);
 
-            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.22f);
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.25f);
             GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), amberAccentTexture);
             GUI.DrawTexture(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), amberAccentTexture);
             GUI.DrawTexture(new Rect(rect.x, rect.y, 1f, rect.height), amberAccentTexture);
             GUI.DrawTexture(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), amberAccentTexture);
 
-            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.45f);
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.50f);
             GUI.DrawTexture(
                 new Rect(rect.x, rect.y, rect.width, 1f),
                 amberAccentTexture);
 
             GUI.color = prev;
 
+            float padH = Mathf.RoundToInt(12f * currentUiScale);
+            float padV = Mathf.RoundToInt(10f * currentUiScale);
             Rect contentRect = new Rect(
-                rect.x + hudCardStyle.padding.left,
-                rect.y + hudCardStyle.padding.top,
-                rect.width - hudCardStyle.padding.left - hudCardStyle.padding.right,
-                rect.height - hudCardStyle.padding.top - hudCardStyle.padding.bottom);
+                rect.x + padH,
+                rect.y + padV,
+                rect.width - padH * 2f,
+                rect.height - padV * 2f);
 
             GUILayout.BeginArea(contentRect);
             drawer?.Invoke();
@@ -6010,7 +7748,7 @@ namespace MPSettlers.Gameplay
 
         private void EnsureGuiStyles()
         {
-            float targetUiScale = Mathf.Clamp(Mathf.Min(Screen.width / 1600f, Screen.height / 900f), 0.78f, 1.35f);
+            float targetUiScale = Mathf.Clamp(Mathf.Min(Screen.width / 1600f, Screen.height / 900f), 0.75f, 1.6f);
 
             if (windowStyle != null)
             {
@@ -6188,7 +7926,7 @@ namespace MPSettlers.Gameplay
 
             journalTitleStyle = new GUIStyle(headingStyle)
             {
-                fontSize = 22,
+                fontSize = 24,
                 normal = { textColor = new Color(0.910f, 0.875f, 0.753f) }
             };
 
@@ -6376,7 +8114,7 @@ namespace MPSettlers.Gameplay
                 Mathf.RoundToInt(14f * targetUiScale),
                 Mathf.RoundToInt(12f * targetUiScale),
                 Mathf.RoundToInt(12f * targetUiScale));
-            journalTitleStyle.fontSize = Mathf.RoundToInt(20f * targetUiScale);
+            journalTitleStyle.fontSize = Mathf.RoundToInt(22f * targetUiScale);
             journalSubtitleStyle.fontSize = Mathf.RoundToInt(11f * targetUiScale);
             journalTabStyle.fontSize = Mathf.RoundToInt(12f * targetUiScale);
             journalActiveTabStyle.fontSize = journalTabStyle.fontSize;
@@ -6392,10 +8130,10 @@ namespace MPSettlers.Gameplay
             questDoneStyle.fontSize = Mathf.RoundToInt(12f * targetUiScale);
             questPendingStyle.fontSize = Mathf.RoundToInt(12f * targetUiScale);
             hudCardStyle.padding = new RectOffset(
+                Mathf.RoundToInt(12f * targetUiScale),
+                Mathf.RoundToInt(12f * targetUiScale),
                 Mathf.RoundToInt(10f * targetUiScale),
-                Mathf.RoundToInt(10f * targetUiScale),
-                Mathf.RoundToInt(8f * targetUiScale),
-                Mathf.RoundToInt(8f * targetUiScale));
+                Mathf.RoundToInt(10f * targetUiScale));
             escHintStyle.fontSize = Mathf.RoundToInt(10f * targetUiScale);
         }
 
