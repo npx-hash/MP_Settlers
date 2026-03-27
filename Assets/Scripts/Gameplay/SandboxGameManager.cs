@@ -2122,12 +2122,27 @@ namespace MPSettlers.Gameplay
 
             if (Keyboard.current.xKey.wasPressedThisFrame)
             {
-                deleteMode = !deleteMode;
-                if (deleteMode)
+                // Context-sensitive X key:
+                // 1. If in inventory/journal on the Inventory tab → drop selected item (handled in HandleInGameMenuNavigation)
+                // 2. If in placement/delete mode and looking at a placed object → delete that object directly
+                // 3. Otherwise → toggle delete mode
+                if (inGameMenuOpen || containerStorageOpen || escMenuOpen)
                 {
-                    CloseBuildPanel();
-                    placementActive = false;
-                    CleanupGhost();
+                    // Let HandleInGameMenuNavigation handle X in journal context
+                }
+                else if ((placementActive || deleteMode) && targetedPlacedObject != null)
+                {
+                    TryDeleteTarget();
+                }
+                else
+                {
+                    deleteMode = !deleteMode;
+                    if (deleteMode)
+                    {
+                        CloseBuildPanel();
+                        placementActive = false;
+                        CleanupGhost();
+                    }
                 }
             }
 
@@ -2481,6 +2496,9 @@ namespace MPSettlers.Gameplay
             {
                 TryDeleteTarget();
             }
+
+            // X key also deletes the targeted object directly (handled by HandleGlobalShortcuts,
+            // but LMB/attack is the primary path here for consistency)
         }
 
         private void TryDeleteTarget()
@@ -3672,6 +3690,12 @@ namespace MPSettlers.Gameplay
             {
                 selectedInGameMenuTab = InGameMenuTab.Settings;
             }
+
+            // X key drops the selected inventory item to the ground
+            if (Keyboard.current.xKey.wasPressedThisFrame && selectedInGameMenuTab == InGameMenuTab.Inventory)
+            {
+                TryDropSelectedInventoryItem();
+            }
         }
 
         private void ShiftInGameMenuTab(int delta)
@@ -3697,6 +3721,90 @@ namespace MPSettlers.Gameplay
             }
 
             selectedInGameMenuTab = tabs[currentIndex];
+        }
+
+        private void TryDropSelectedInventoryItem()
+        {
+            List<JournalInventoryEntry> entries = GetJournalInventoryEntries();
+            JournalInventoryEntry? selected = GetSelectedInventoryEntry(entries);
+            if (selected == null || selected.Value.quantity <= 0)
+            {
+                SetStatusMessage("No item selected to drop.");
+                return;
+            }
+
+            string itemId = selected.Value.itemId;
+            string displayName = selected.Value.displayName;
+
+            // Handle raw resources (not catalog items — just decrement the resource counter)
+            if (string.Equals(itemId, "resource_wood", StringComparison.Ordinal))
+            {
+                if (wood <= 0) return;
+                wood--;
+                SetStatusMessage("Dropped 1 wood.");
+                SaveWorld();
+                return;
+            }
+
+            if (string.Equals(itemId, "resource_stone", StringComparison.Ordinal))
+            {
+                if (stone <= 0) return;
+                stone--;
+                SetStatusMessage("Dropped 1 stone.");
+                SaveWorld();
+                return;
+            }
+
+            if (string.Equals(itemId, "carry_food", StringComparison.Ordinal))
+            {
+                if (food <= 0) return;
+                food--;
+                SetStatusMessage("Dropped 1 food.");
+                SaveWorld();
+                return;
+            }
+
+            // Catalog item: must exist in catalog to spawn as a world pickup
+            if (!catalogLookup.TryGetValue(itemId, out BuildCatalogItem catalogItem))
+            {
+                SetStatusMessage($"Cannot drop {displayName} — unknown catalog item.");
+                return;
+            }
+
+            // Remove 1 from the correct inventory
+            if (storedFoodInventory.ContainsKey(itemId))
+            {
+                RemoveInventoryCount(storedFoodInventory, itemId, 1);
+            }
+            else if (storedWeaponInventory.ContainsKey(itemId))
+            {
+                RemoveInventoryCount(storedWeaponInventory, itemId, 1);
+            }
+            else
+            {
+                SetStatusMessage($"Cannot drop {displayName} — not in inventory.");
+                return;
+            }
+
+            // Spawn the pickup on the ground in front of the player
+            if (playerTransform != null && catalogItem.prefab != null)
+            {
+                Vector3 dropPosition = playerTransform.position + playerTransform.forward * 2f;
+                dropPosition = GetGroundedPosition(dropPosition);
+
+                SpawnCatalogItem(
+                    catalogItem,
+                    null,
+                    dropPosition,
+                    Quaternion.identity,
+                    1f,
+                    registerForSave: true,
+                    placedByPlayer: true,
+                    alignToGround: true);
+            }
+
+            SetStatusMessage($"Dropped {displayName}.");
+            SaveWorld();
         }
 
         private void OpenInGameMenu()
@@ -4724,6 +4832,8 @@ namespace MPSettlers.Gameplay
                 DrawInventorySelectionDetails(selectedEntry);
                 GUILayout.Space(10f);
                 DrawEquipButton(selectedEntry);
+                GUILayout.Space(6f);
+                DrawDropButton(selectedEntry);
             }, "Inspection");
 
             // ── Column 4: Crafting ────────────────────────────────────
@@ -6315,6 +6425,33 @@ namespace MPSettlers.Gameplay
             }
         }
 
+        private void DrawDropButton(JournalInventoryEntry? selectedEntry)
+        {
+            if (!selectedEntry.HasValue || selectedEntry.Value.quantity <= 0)
+                return;
+
+            JournalInventoryEntry entry = selectedEntry.Value;
+
+            float btnHeight = Mathf.Clamp(32f * currentUiScale, 28f, 48f);
+            Rect btnRect = GUILayoutUtility.GetRect(
+                10f, btnHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(btnHeight));
+
+            Color prev = GUI.color;
+            GUI.color = new Color(0.300f, 0.140f, 0.060f, 0.85f);
+            GUI.DrawTexture(btnRect, modeBadgeTexture);
+            GUI.color = new Color(0.788f, 0.659f, 0.298f, 0.40f);
+            GUI.DrawTexture(new Rect(btnRect.x, btnRect.y, btnRect.width, 1f), amberAccentTexture);
+            GUI.DrawTexture(new Rect(btnRect.x, btnRect.yMax - 1f, btnRect.width, 1f), amberAccentTexture);
+            GUI.color = prev;
+
+            if (GUI.Button(btnRect, $"Drop {entry.displayName} (X)", journalActiveTabStyle))
+            {
+                TryDropSelectedInventoryItem();
+            }
+        }
+
         private void HandleContainerStorageNavigation()
         {
             if (Keyboard.current == null)
@@ -7414,17 +7551,17 @@ namespace MPSettlers.Gameplay
 
                 string buildCost = devBuildMode ? "Free in DEV Build Mode" : selectedItem.cost.ToDisplayString();
                 string validity = placementHasValidTarget ? "Placement ready." : "Move away from the player.";
-                return $"{selectedItem.displayName}  |  {buildCost}\n{validity}  LMB/Enter place  R rotate  G snap  Wheel/1-0 slot  Esc/RMB cancel";
+                return $"{selectedItem.displayName}  |  {buildCost}\n{validity}  LMB/Enter place  R rotate  G snap  X delete aimed  Esc/RMB cancel";
             }
 
             if (deleteMode)
             {
                 if (targetedPlacedObject != null && catalogLookup.TryGetValue(targetedPlacedObject.CatalogItemId, out BuildCatalogItem item))
                 {
-                    return $"Delete {item.displayName}\nRefund: {item.cost.ToDisplayString()}";
+                    return $"Delete {item.displayName}  |  Refund: {item.cost.ToDisplayString()}\nLMB or X to remove  |  Esc/RMB exit delete mode";
                 }
 
-                return "Delete Tool active.\nAim at a placed object and left click to remove it.";
+                return "Delete Tool active.\nAim at a placed object and press LMB or X to remove it.";
             }
 
             if (targetedPickup != null)
