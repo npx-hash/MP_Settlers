@@ -193,5 +193,6 @@ namespace MPSettlers.Gameplay
         public List<PlacedObjectSaveData> placedObjects = new();
         public EquipmentSaveData equipment = new EquipmentSaveData();
         public StorageSaveData storage = new StorageSaveData();
+        public SkillsSaveData skills = new SkillsSaveData();
     }
 }

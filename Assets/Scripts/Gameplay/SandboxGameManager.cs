@@ -188,6 +188,10 @@ namespace MPSettlers.Gameplay
         private int selectedRecipeIndex;
         private Vector2 craftingScrollPos;
 
+        // ── Skills / XP Progression ────────────────────────────────
+        private readonly SkillState playerSkills = new();
+        private Vector2 skillsTabScroll;
+
         // ── Seed / Farming ──────────────────────────────────────────
         // Maps virtual seed item IDs to the crop catalog ID they produce when planted.
         private readonly Dictionary<string, string> seedToCropMap = new(StringComparer.Ordinal);
@@ -910,6 +914,8 @@ namespace MPSettlers.Gameplay
                 }
             }
 
+            playerSkills.Restore(safeData.skills);
+
             if (safeData.placedObjects != null)
             {
                 foreach (PlacedObjectSaveData placedObject in safeData.placedObjects)
@@ -1050,6 +1056,7 @@ namespace MPSettlers.Gameplay
             };
 
             saveData.storage = new StorageSaveData();
+            saveData.skills = playerSkills.Capture();
 
             string json = JsonUtility.ToJson(saveData, true);
             File.WriteAllText(GetSavePath(), json);
@@ -1349,6 +1356,16 @@ namespace MPSettlers.Gameplay
             if (targetedRenewable != null && targetedRenewable.TryHarvest(out int amount))
             {
                 AddResource(targetedRenewable.ResourceType, amount);
+
+                // Award skill XP based on resource type
+                long harvestXp = Mathf.Max(1, amount) * 15L;
+                switch (targetedRenewable.ResourceType)
+                {
+                    case ResourceType.Wood: AwardSkillXp(SkillType.Woodcutting, harvestXp); break;
+                    case ResourceType.Stone: AwardSkillXp(SkillType.Mining, harvestXp); break;
+                    case ResourceType.Food: AwardSkillXp(SkillType.Farming, harvestXp); break;
+                }
+
                 SetStatusMessage($"+{amount} {targetedRenewable.ResourceType.ToString().ToLowerInvariant()}");
                 SaveWorld();
             }
@@ -2671,6 +2688,7 @@ namespace MPSettlers.Gameplay
                 SpendCost(item.cost);
             }
 
+            AwardSkillXp(SkillType.Building, 25L);
             SaveWorld();
             SetStatusMessage($"Placed {item.displayName}.");
 
@@ -3210,6 +3228,17 @@ namespace MPSettlers.Gameplay
             }
         }
 
+        private void AwardSkillXp(SkillType skill, long amount)
+        {
+            if (amount <= 0) return;
+            int prevLevel = playerSkills.GetLevel(skill);
+            int newLevel = playerSkills.AddXp(skill, amount);
+            if (newLevel > prevLevel)
+            {
+                SetStatusMessage($"{SkillDefinitions.GetDisplayName(skill)} leveled up! Level {newLevel}");
+            }
+        }
+
         private bool CanAfford(BuildCost cost)
         {
             if (cost == null)
@@ -3576,6 +3605,7 @@ namespace MPSettlers.Gameplay
                 }
             }
 
+            AwardSkillXp(SkillType.Crafting, 20L * recipe.resultCount);
             SetStatusMessage($"Crafted {recipe.resultCount}x {recipe.displayName}!");
             SaveWorld();
         }
@@ -4764,77 +4794,131 @@ namespace MPSettlers.Gameplay
         private void DrawSkillsTab(Rect contentRect)
         {
             float gutter = Mathf.RoundToInt(14f * currentUiScale);
-            float leftWidth = Mathf.Clamp(contentRect.width * 0.54f, 340f, 780f);
+            float leftWidth = Mathf.Clamp(contentRect.width * 0.62f, 400f, 900f);
 
             Rect skillsRect = new Rect(contentRect.x, contentRect.y, leftWidth, contentRect.height);
-            Rect previewRect = new Rect(skillsRect.xMax + gutter, contentRect.y, contentRect.width - leftWidth - gutter, contentRect.height);
+            Rect summaryRect = new Rect(skillsRect.xMax + gutter, contentRect.y, contentRect.width - leftWidth - gutter, contentRect.height);
 
-            DrawJournalPanel(skillsRect, "Skill Tracks", () =>
+            // ── Left: Skill list ───────────────────────────────────────
+            DrawJournalPanel(skillsRect, "Skills", () =>
             {
-                GUILayout.Label("Progress across current settlement activities.", journalSubtitleStyle);
-                GUILayout.Space(8f);
-
-                DrawSkillTrackCard(
-                    "Builder",
-                    Mathf.Clamp(CountPlacedObjects(ItemKind.Structure), 0, 5),
-                    "Structures placed and maintained.");
-
+                GUILayout.Label($"Total Level: {playerSkills.GetTotalLevel()}  |  Max per skill: {SkillProgression.MaxLevel}", journalSubtitleStyle);
                 GUILayout.Space(6f);
 
-                DrawSkillTrackCard(
-                    "Gatherer",
-                    Mathf.Clamp((wood / 5) + (stone / 3), 0, 5),
-                    "Material collection efficiency.");
+                float scrollHeight = Mathf.Max(200f, skillsRect.height - 110f);
+                skillsTabScroll = GUILayout.BeginScrollView(skillsTabScroll, GUILayout.Height(scrollHeight));
 
-                GUILayout.Space(6f);
+                foreach (SkillType skill in SkillDefinitions.All)
+                {
+                    DrawSkillRow(skill);
+                    GUILayout.Space(4f);
+                }
 
-                int providerTier = Mathf.Clamp(Mathf.Max(food, storedFoodInventory.Values.Sum()), 0, 5);
-                DrawSkillTrackCard(
-                    "Provider",
-                    providerTier,
-                    "Food collection and storage.");
+                GUILayout.EndScrollView();
+            }, "XP progression for all skills");
 
-                GUILayout.Space(6f);
-
-                DrawSkillTrackCard(
-                    "Curator",
-                    Mathf.Clamp(CountFavoritedSlots(), 0, 5),
-                    "Pinned and organized build pieces.");
-            }, "Character progression overview");
-
-            DrawJournalPanel(previewRect, "Selected Preview", () =>
+            // ── Right: Summary ─────────────────────────────────────────
+            DrawJournalPanel(summaryRect, "Summary", () =>
             {
-                BuildCatalogItem selectedItem = GetSelectedHotbarItem();
-                float previewHeight = Mathf.Clamp(previewRect.height - 96f, 180f, 360f);
+                GUILayout.Label("Character Totals", journalSubtitleStyle);
+                GUILayout.Space(10f);
 
-                GUILayout.Label("Current hotbar focus", journalSubtitleStyle);
-                GUILayout.Space(8f);
+                int totalLevel = playerSkills.GetTotalLevel();
+                long totalXp = playerSkills.GetTotalXp();
+                int skillCount = SkillDefinitions.All.Length;
 
-                DrawSelectedPreviewCard(selectedItem, previewHeight);
+                GUILayout.Label($"Combined Level: {totalLevel} / {SkillProgression.MaxLevel * skillCount}", headingStyle);
+                GUILayout.Space(4f);
+                GUILayout.Label($"Total XP Earned: {FormatXpNumber(totalXp)}", labelStyle);
+                GUILayout.Space(14f);
 
-                GUILayout.Space(8f);
-                Rect infoRect = GUILayoutUtility.GetRect(10f, 58f, GUILayout.ExpandWidth(true), GUILayout.Height(58f));
-                DrawBorderPanel(infoRect, hudCardTexture, 1f);
+                GUI.DrawTexture(GUILayoutUtility.GetRect(10f, 2f, GUILayout.ExpandWidth(true), GUILayout.Height(2f)), amberAccentTexture);
+                GUILayout.Space(10f);
 
-                Rect innerRect = new Rect(infoRect.x + 10f, infoRect.y + 8f, infoRect.width - 20f, infoRect.height - 16f);
+                GUILayout.Label("Skill Levels", journalSubtitleStyle);
+                GUILayout.Space(6f);
 
-                if (selectedItem != null)
+                foreach (SkillType skill in SkillDefinitions.All)
                 {
-                    GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width, 18f), selectedItem.displayName, headingStyle);
-                    GUI.Label(
-                        new Rect(innerRect.x, innerRect.y + 20f, innerRect.width, 16f),
-                        $"{selectedItem.category}  |  {GetItemKindLabel(selectedItem.kind)}",
-                        journalSubtitleStyle);
+                    SkillRuntimeData data = playerSkills.Get(skill);
+                    int level = data.Level;
+                    string levelText = level >= SkillProgression.MaxLevel ? $"Lv {level} (MAX)" : $"Lv {level}";
+                    GUILayout.Label($"{SkillDefinitions.GetDisplayName(skill)}: {levelText}", smallMutedStyle);
                 }
-                else
-                {
-                    GUI.Label(new Rect(innerRect.x, innerRect.y, innerRect.width, 18f), "Nothing selected", headingStyle);
-                    GUI.Label(
-                        new Rect(innerRect.x, innerRect.y + 20f, innerRect.width, 16f),
-                        "Pick a hotbar item or build piece to inspect it here.",
-                        journalSubtitleStyle);
-                }
-            }, "Current build item");
+            }, "Overall progression");
+        }
+
+        private void DrawSkillRow(SkillType skill)
+        {
+            SkillRuntimeData data = playerSkills.Get(skill);
+            if (data == null) return;
+
+            int level = data.Level;
+            float progress = data.Progress;
+            bool isMaxed = level >= SkillProgression.MaxLevel;
+
+            float cardHeight = Mathf.Clamp(72f * currentUiScale, 62f, 96f);
+            Rect cardRect = GUILayoutUtility.GetRect(10f, cardHeight, GUILayout.ExpandWidth(true), GUILayout.Height(cardHeight));
+
+            DrawBorderPanel(cardRect, journalCardTexture, 1f);
+
+            float pad = 10f * currentUiScale;
+            Rect inner = new Rect(cardRect.x + pad, cardRect.y + 6f * currentUiScale, cardRect.width - pad * 2f, cardRect.height - 12f * currentUiScale);
+
+            // Title row: skill name + level
+            float titleH = 18f * currentUiScale;
+            string levelLabel = isMaxed ? $"Level {level}  (MAX)" : $"Level {level}";
+            GUI.Label(new Rect(inner.x, inner.y, inner.width * 0.55f, titleH), SkillDefinitions.GetDisplayName(skill), headingStyle);
+            GUI.Label(new Rect(inner.x + inner.width * 0.55f, inner.y, inner.width * 0.45f, titleH), levelLabel, smallMutedStyle);
+
+            // Description
+            float descY = inner.y + titleH + 2f;
+            float descH = 14f * currentUiScale;
+            GUI.Label(new Rect(inner.x, descY, inner.width, descH), SkillDefinitions.GetDescription(skill), journalSubtitleStyle);
+
+            // XP bar
+            float barY = descY + descH + 4f;
+            float barH = Mathf.Clamp(10f * currentUiScale, 8f, 13f);
+            Rect barRect = new Rect(inner.x, barY, inner.width * 0.70f, barH);
+
+            // Bar background
+            Color prev = GUI.color;
+            GUI.color = new Color(0.039f, 0.047f, 0.027f, 0.92f);
+            GUI.DrawTexture(barRect, skillBarBgTexture);
+
+            // Bar fill
+            float fillFraction = isMaxed ? 1f : progress;
+            float fillWidth = (barRect.width - 2f) * Mathf.Clamp01(fillFraction);
+            if (fillWidth > 0f)
+            {
+                GUI.color = Color.white;
+                GUI.DrawTexture(new Rect(barRect.x + 1f, barRect.y + 1f, fillWidth, barRect.height - 2f), skillBarFillTexture);
+            }
+
+            GUI.color = prev;
+
+            // XP label to the right of bar
+            float xpLabelX = barRect.xMax + 6f * currentUiScale;
+            float xpLabelW = inner.xMax - xpLabelX;
+            string xpText;
+            if (isMaxed)
+            {
+                xpText = FormatXpNumber(data.totalXp) + " XP";
+            }
+            else
+            {
+                xpText = $"{FormatXpNumber(data.XpIntoLevel)} / {FormatXpNumber(data.XpToNext)}";
+            }
+
+            GUI.Label(new Rect(xpLabelX, barY - 1f, xpLabelW, barH + 4f), xpText, smallMutedStyle);
+        }
+
+        private static string FormatXpNumber(long xp)
+        {
+            if (xp >= 1_000_000) return $"{xp / 1_000_000f:F1}M";
+            if (xp >= 10_000) return $"{xp / 1_000f:F1}K";
+            if (xp >= 1_000) return $"{xp / 1_000f:F2}K";
+            return xp.ToString();
         }
 
         private void DrawInventoryTab(Rect contentRect)
