@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la \"c:/Projects/MP_Settlers/Assets/Scripts/Gameplay/EquipmentSystem.cs\"*)"
+      "Bash(ls -la \"c:/Projects/MP_Settlers/Assets/Scripts/Gameplay/EquipmentSystem.cs\"*)",
+      "Read(//tmp/**)"
     ]
   }
 }
