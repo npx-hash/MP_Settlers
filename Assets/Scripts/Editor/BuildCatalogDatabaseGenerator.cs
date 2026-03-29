@@ -13,12 +13,16 @@ namespace MPSettlers.EditorTools
     {
         private const string CatalogAssetPath = "Assets/Resources/Generated/BuildCatalogDatabase.asset";
 
-        private static readonly (string rootPath, BuildCategory category)[] PackMappings =
+        // Include model roots as well as prefab roots so the catalog can rebuild from
+        // imported content even when a pack only ships meshes.
+        private static readonly (string rootPath, BuildCategory category, string searchFilter)[] PackMappings =
         {
-            ("Assets/Downloaded/FantasyMedievalTown_LITE/Prefabs", BuildCategory.Town),
-            ("Assets/Downloaded/LowPolyFarmLite/Prefabs", BuildCategory.Farm),
-            ("Assets/Downloaded/LowPolyFoodLite/Prefabs", BuildCategory.Food),
-            ("Assets/Downloaded/LowPolyRPGWeapons_Lite/Prefabs", BuildCategory.Weapons)
+            ("Assets/Downloaded/LowPolyFarmLite/Models", BuildCategory.Farm, "t:Model"),
+            ("Assets/Downloaded/Food Pack Vol.1/OBJ", BuildCategory.Food, "t:Model"),
+            ("Assets/Downloaded/Junk Food Pack by Quaternius/FBX", BuildCategory.Food, "t:Model"),
+            ("Assets/Downloaded/FantasyMedievalTown_LITE/Prefabs", BuildCategory.Town, "t:Prefab"),
+            ("Assets/Downloaded/LowPolyFarmLite/Prefabs", BuildCategory.Farm, "t:Prefab"),
+            ("Assets/Downloaded/LowPolyRPGWeapons_Lite/Prefabs", BuildCategory.Weapons, "t:Prefab")
         };
 
         static BuildCatalogDatabaseGenerator()
@@ -30,42 +34,7 @@ namespace MPSettlers.EditorTools
         public static void RebuildCatalog()
         {
             BuildCatalogDatabase catalog = LoadOrCreateCatalogAsset();
-            List<BuildCatalogItem> items = new();
-
-            foreach ((string rootPath, BuildCategory category) in PackMappings)
-            {
-                if (!AssetDatabase.IsValidFolder(rootPath))
-                {
-                    continue;
-                }
-
-                string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { rootPath });
-                foreach (string prefabGuid in prefabGuids)
-                {
-                    string assetPath = AssetDatabase.GUIDToAssetPath(prefabGuid);
-                    if (string.IsNullOrWhiteSpace(assetPath) || !assetPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
-                    if (prefab == null)
-                    {
-                        continue;
-                    }
-
-                    BuildCatalogItem item = CreateCatalogItem(prefab, category);
-                    if (item != null)
-                    {
-                        items.Add(item);
-                    }
-                }
-            }
-
-            items = items
-                .OrderBy(item => item.category)
-                .ThenBy(item => item.displayName)
-                .ToList();
+            List<BuildCatalogItem> items = CollectCatalogItems();
 
             catalog.SetItems(items);
             EditorUtility.SetDirty(catalog);
@@ -83,14 +52,52 @@ namespace MPSettlers.EditorTools
                 return;
             }
 
-            int expectedItemCount = PackMappings
-                .Where(mapping => AssetDatabase.IsValidFolder(mapping.rootPath))
-                .Sum(mapping => AssetDatabase.FindAssets("t:Prefab", new[] { mapping.rootPath }).Length);
+            int expectedItemCount = CollectCatalogItems().Count;
 
             if (existingCatalog.Items.Count != expectedItemCount)
             {
                 RebuildCatalog();
             }
+        }
+
+        private static List<BuildCatalogItem> CollectCatalogItems()
+        {
+            Dictionary<string, BuildCatalogItem> itemsById = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach ((string rootPath, BuildCategory category, string searchFilter) in PackMappings)
+            {
+                if (!AssetDatabase.IsValidFolder(rootPath))
+                {
+                    continue;
+                }
+
+                string[] assetGuids = AssetDatabase.FindAssets(searchFilter, new[] { rootPath });
+                foreach (string assetGuid in assetGuids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(assetGuid);
+                    if (string.IsNullOrWhiteSpace(assetPath))
+                    {
+                        continue;
+                    }
+
+                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                    if (prefab == null)
+                    {
+                        continue;
+                    }
+
+                    BuildCatalogItem item = CreateCatalogItem(prefab, category);
+                    if (item != null)
+                    {
+                        itemsById[item.id] = item;
+                    }
+                }
+            }
+
+            return itemsById.Values
+                .OrderBy(item => item.category)
+                .ThenBy(item => item.displayName)
+                .ToList();
         }
 
         private static BuildCatalogDatabase LoadOrCreateCatalogAsset()

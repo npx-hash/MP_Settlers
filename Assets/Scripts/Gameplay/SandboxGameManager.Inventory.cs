@@ -17,6 +17,117 @@ namespace MPSettlers.Gameplay
     {
         private void InitializeCraftingRecipes()
         {
+            craftingRecipes = new List<CraftingRecipe>();
+
+            AddInventoryRecipeForPrefab(
+                "craft_dagger",
+                "Dagger",
+                "A light melee weapon that trades power for speed.",
+                "Dagger_01",
+                1,
+                new CraftingIngredient { wood = 1, stone = 3 });
+
+            AddInventoryRecipeForPrefab(
+                "craft_axe",
+                "Battle Axe",
+                "A heavier melee weapon with a slower swing.",
+                "Ax_01",
+                1,
+                new CraftingIngredient { wood = 3, stone = 5 });
+
+            AddInventoryRecipeForPrefab(
+                "craft_hammer",
+                "War Hammer",
+                "A slow, hard-hitting weapon for close combat.",
+                "Hammer_01",
+                1,
+                new CraftingIngredient { wood = 4, stone = 6 });
+
+            AddInventoryRecipeForPrefab(
+                "craft_bow",
+                "Hunting Bow",
+                "A ranged weapon that pairs with crafted arrows.",
+                "Bow_01",
+                1,
+                new CraftingIngredient { wood = 4, stone = 1 });
+
+            AddInventoryRecipeForPrefab(
+                "craft_arrows",
+                "Arrows (x5)",
+                "Ammunition for bows.",
+                "Arrow_01",
+                5,
+                new CraftingIngredient { wood = 2, stone = 1 });
+
+            AddSeedRecipe(
+                "craft_tomato_seeds",
+                "Tomato Seeds (x3)",
+                "Plant in fertile ground to regrow a tomato crop.",
+                "seed:tomato",
+                3,
+                new CraftingIngredient { food = 2 });
+
+            AddSeedRecipe(
+                "craft_cabbage_seeds",
+                "Cabbage Seeds (x3)",
+                "Plant in fertile ground to regrow a cabbage crop.",
+                "seed:cabbage",
+                3,
+                new CraftingIngredient { food = 2 });
+        }
+
+        private void AddInventoryRecipeForPrefab(
+            string recipeId,
+            string displayName,
+            string description,
+            string prefabName,
+            int resultCount,
+            CraftingIngredient cost)
+        {
+            if (!TryGetCatalogItemByPrefabName(prefabName, out BuildCatalogItem resultItem))
+            {
+                return;
+            }
+
+            craftingRecipes.Add(new CraftingRecipe
+            {
+                id = recipeId,
+                displayName = displayName,
+                description = description,
+                resultItemId = resultItem.id,
+                resultCount = Mathf.Max(1, resultCount),
+                cost = cost ?? new CraftingIngredient(),
+                resultIsStructure = false
+            });
+        }
+
+        private void AddSeedRecipe(
+            string recipeId,
+            string displayName,
+            string description,
+            string seedItemId,
+            int resultCount,
+            CraftingIngredient cost)
+        {
+            if (!catalogLookup.ContainsKey(seedItemId))
+            {
+                return;
+            }
+
+            craftingRecipes.Add(new CraftingRecipe
+            {
+                id = recipeId,
+                displayName = displayName,
+                description = description,
+                resultItemId = seedItemId,
+                resultCount = Mathf.Max(1, resultCount),
+                cost = cost ?? new CraftingIngredient(),
+                resultIsStructure = false
+            });
+        }
+
+        private void InitializeCraftingRecipesLegacy()
+        {
             craftingRecipes = new List<CraftingRecipe>
             {
                 new() { id = "craft_wooden_fence", displayName = "Wooden Fence", description = "A simple wooden fence section.",
@@ -120,6 +231,43 @@ namespace MPSettlers.Gameplay
         }
 
         private void CraftRecipe(CraftingRecipe recipe)
+        {
+            if (recipe == null) return;
+            if (!CanAffordRecipe(recipe))
+            {
+                SetStatusMessage("Not enough materials to craft this.");
+                return;
+            }
+
+            if (!catalogLookup.TryGetValue(recipe.resultItemId, out BuildCatalogItem resultItem))
+            {
+                SetStatusMessage("Recipe result not found in catalog.");
+                return;
+            }
+
+            if (recipe.resultIsStructure)
+            {
+                SetStatusMessage("Structure crafting is disabled in this slice. Use the build menu instead.");
+                return;
+            }
+
+            SpendCraftingCost(recipe.cost);
+
+            if (resultItem.pickupInventoryType == PickupInventoryType.Food)
+            {
+                AddInventoryCount(storedFoodInventory, recipe.resultItemId, recipe.resultCount);
+            }
+            else
+            {
+                AddInventoryCount(storedWeaponInventory, recipe.resultItemId, recipe.resultCount);
+            }
+
+            AwardSkillXp(SkillType.Crafting, 20L * recipe.resultCount);
+            SetStatusMessage($"Crafted {recipe.resultCount}x {recipe.displayName}!");
+            SaveWorld();
+        }
+
+        private void CraftRecipeLegacy(CraftingRecipe recipe)
         {
             if (recipe == null) return;
             if (!CanAffordRecipe(recipe))

@@ -295,69 +295,33 @@ namespace MPSettlers.Gameplay
         private void SeedStarterNodes()
         {
             Vector3 origin = playerTransform != null ? playerTransform.position : Vector3.zero;
-            TrySeed("Tree_04", origin + new Vector3(6f, 0f, 8f), 20f);
-            TrySeed("Tree_04", origin + new Vector3(-8f, 0f, 4f), -30f);
-            TrySeed("Rock_04", origin + new Vector3(8f, 0f, -6f), 0f);
-            TrySeed("Rock_04", origin + new Vector3(-6f, 0f, -8f), 30f);
-            TrySeed("TomatoPlant_01", origin + new Vector3(4f, 0f, 11f), 0f);
-            TrySeed("Cabbage_01", origin + new Vector3(-4f, 0f, 11f), 0f);
+            wood = StarterWoodSupply;
+            stone = StarterStoneSupply;
+            food = StarterFoodSupply;
 
-            // Give player starter seeds so they can begin farming immediately
+            TrySeed("TomatoPlant_01", origin + new Vector3(4f, 0f, 10f), 0f);
+            TrySeed("TomatoPlant_01", origin + new Vector3(-4f, 0f, 10.5f), 0f);
+            TrySeed("Barrel_01_LITE", origin + new Vector3(6f, 0f, 3.5f), 20f);
+            TrySeed("Dagger_01", origin + new Vector3(-2.25f, 0f, 4.5f), -12f);
+            TrySeed("Hammer_01", origin + new Vector3(2.25f, 0f, 4.5f), 15f);
+
             if (seedToCropMap.ContainsKey("seed:tomato"))
-                AddInventoryCount(storedFoodInventory, "seed:tomato", 3);
-            if (seedToCropMap.ContainsKey("seed:cabbage"))
-                AddInventoryCount(storedFoodInventory, "seed:cabbage", 3);
+                AddInventoryCount(storedFoodInventory, "seed:tomato", StarterTomatoSeedCount);
         }
 
         private void SeedExpandedEnvironment()
         {
             Vector3 origin = playerTransform != null ? playerTransform.position : Vector3.zero;
-            float terrainSpacing = 20f;
 
-            Vector3[] terrainOffsets =
-            {
-                new(terrainSpacing, 0f, 0f),
-                new(-terrainSpacing, 0f, 0f),
-                new(0f, 0f, terrainSpacing),
-                new(0f, 0f, -terrainSpacing),
-                new(terrainSpacing, 0f, terrainSpacing),
-                new(-terrainSpacing, 0f, terrainSpacing),
-                new(terrainSpacing, 0f, -terrainSpacing),
-                new(-terrainSpacing, 0f, -terrainSpacing)
-            };
-
-            foreach (Vector3 offset in terrainOffsets)
-            {
-                TrySeed("Terrain_01", origin + offset, 0f);
-            }
-
-            SeedEnvironmentCluster(origin + new Vector3(16f, 0f, 14f), 15f, "Tree_04", "Rock_04", "Tree_04");
-            SeedEnvironmentCluster(origin + new Vector3(-17f, 0f, 12f), -20f, "Tree_04", "Rock_04", "Cabbage_01");
-            SeedEnvironmentCluster(origin + new Vector3(18f, 0f, -15f), 30f, "Rock_04", "Tree_04", "TomatoPlant_01");
-            SeedEnvironmentCluster(origin + new Vector3(-16f, 0f, -18f), -35f, "Tree_04", "Rock_04", "Tree_04");
-            SeedEnvironmentCluster(origin + new Vector3(0f, 0f, 24f), 10f, "Tree_04", "Cabbage_01", "TomatoPlant_01");
-            SeedEnvironmentCluster(origin + new Vector3(0f, 0f, -24f), -10f, "Rock_04", "Tree_04", "Rock_04");
-        }
-
-        private void SeedEnvironmentCluster(Vector3 center, float yaw, params string[] prefabNames)
-        {
-            Vector3[] localOffsets =
-            {
-                new(-3.5f, 0f, 2.5f),
-                new(3.75f, 0f, 1.25f),
-                new(0.5f, 0f, -3.75f)
-            };
-
-            for (int i = 0; i < prefabNames.Length && i < localOffsets.Length; i++)
-            {
-                TrySeed(prefabNames[i], center + localOffsets[i], yaw + (i * 17f));
-            }
+            TrySeed("TomatoPlant_01", origin + new Vector3(8.5f, 0f, 13f), 0f);
+            TrySeed("TomatoPlant_01", origin + new Vector3(-8.5f, 0f, 13f), 0f);
+            TrySeed("Bow_01", origin + new Vector3(-5.25f, 0f, 6.5f), 10f);
+            TrySeed("Arrow_01", origin + new Vector3(-4.25f, 0f, 6.5f), 0f);
         }
 
         private void TrySeed(string prefabName, Vector3 approximatePosition, float yaw)
         {
-            BuildCatalogItem item = catalogLookup.Values.FirstOrDefault(candidate => candidate.prefabName == prefabName);
-            if (item == null)
+            if (!TryGetCatalogItemByPrefabName(prefabName, out BuildCatalogItem item))
             {
                 return;
             }

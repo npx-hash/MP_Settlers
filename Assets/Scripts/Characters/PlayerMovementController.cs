@@ -44,6 +44,7 @@ namespace MPSettlers.Characters
         public float VerticalVelocity => verticalVelocity;
         public float NormalizedSpeed { get; private set; }
         public bool InputSuppressed { get; set; }
+        public float ExternalSpeedMultiplier { get; set; } = 1f;
 
         private void Reset()
         {
@@ -204,9 +205,11 @@ namespace MPSettlers.Characters
 
             Vector3 desiredDirection = GetDesiredMoveDirection(MoveInput);
             WorldMoveDirection = desiredDirection;
-            float currentSpeed = IsSprinting ? sprintSpeed : walkSpeed;
+            float speedMultiplier = Mathf.Max(0f, ExternalSpeedMultiplier);
+            float currentSpeed = (IsSprinting ? sprintSpeed : walkSpeed) * speedMultiplier;
             PlanarVelocity = desiredDirection * currentSpeed;
-            NormalizedSpeed = sprintSpeed > 0f ? Mathf.Clamp01(PlanarVelocity.magnitude / sprintSpeed) : 0f;
+            float maxSpeed = Mathf.Max(walkSpeed, sprintSpeed) * speedMultiplier;
+            NormalizedSpeed = maxSpeed > 0f ? Mathf.Clamp01(PlanarVelocity.magnitude / maxSpeed) : 0f;
 
             if (!InputSuppressed && jumpAction != null && jumpAction.WasPressedThisFrame() && isGrounded)
             {

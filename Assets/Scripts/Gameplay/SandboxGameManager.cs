@@ -57,6 +57,18 @@ namespace MPSettlers.Gameplay
         private const int HotbarSlotCount = 10;
         private const int MaxHealth = 100;
         private const int FoodHealAmount = 25;
+        private const int StarterWoodSupply = 24;
+        private const int StarterStoneSupply = 16;
+        private const int StarterFoodSupply = 6;
+        private const int StarterTomatoSeedCount = 4;
+
+        private static readonly BuildCategory[] BuildCategoryOrder =
+        {
+            BuildCategory.Town,
+            BuildCategory.Farm,
+            BuildCategory.Food,
+            BuildCategory.Weapons
+        };
 
         private static SandboxGameManager instance;
 
@@ -73,6 +85,7 @@ namespace MPSettlers.Gameplay
         }
 
         private readonly Dictionary<string, BuildCatalogItem> catalogLookup = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, BuildCatalogItem> catalogPrefabLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<BuildCategory, List<BuildCatalogItem>> itemsByCategory = new();
         private readonly Dictionary<string, PlacedWorldObject> placedObjects = new(StringComparer.Ordinal);
         private readonly Dictionary<string, int> storedFoodInventory = new(StringComparer.Ordinal);
@@ -557,6 +570,7 @@ namespace MPSettlers.Gameplay
             if (playerMovement != null)
             {
                 playerMovement.InputSuppressed = IsAnyMenuOpen;
+                playerMovement.ExternalSpeedMultiplier = GetEquipmentSpeedMultiplier();
             }
         }
 

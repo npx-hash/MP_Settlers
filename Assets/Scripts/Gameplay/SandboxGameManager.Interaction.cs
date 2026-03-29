@@ -63,13 +63,9 @@ namespace MPSettlers.Gameplay
             {
                 pickupItem = resolvedById;
             }
-            else
+            else if (TryGetCatalogItemByPrefabName(pickup.gameObject.name, out BuildCatalogItem resolvedByPrefabName))
             {
-                // Fallback: match by prefab/gameObject name (handles scene-placed objects
-                // where InventoryPickup.itemId was never set)
-                string objectName = pickup.gameObject.name;
-                pickupItem = catalogLookup.Values.FirstOrDefault(
-                    candidate => string.Equals(candidate.prefabName, objectName, StringComparison.OrdinalIgnoreCase));
+                pickupItem = resolvedByPrefabName;
             }
 
             // Canonical ID: always use the catalog item's id when available
@@ -142,13 +138,29 @@ namespace MPSettlers.Gameplay
         private void ConsumeStoredFood()
         {
             List<KeyValuePair<string, int>> availableItems = storedFoodInventory
-                .Where(pair => pair.Value > 0)
+                .Where(pair => pair.Value > 0 && !IsSeedItem(pair.Key))
                 .OrderBy(pair => pair.Key)
                 .ToList();
 
             if (availableItems.Count == 0)
             {
-                SetStatusMessage("No stored food to consume.");
+                if (food <= 0)
+                {
+                    SetStatusMessage("No stored food to consume.");
+                    return;
+                }
+
+                if (health >= MaxHealth)
+                {
+                    SetStatusMessage("Health is already full.");
+                    return;
+                }
+
+                food--;
+                int resourceHealth = health;
+                health = Mathf.Clamp(health + FoodHealAmount, 0, MaxHealth);
+                SetStatusMessage($"Consumed 1 ration (+{health - resourceHealth} health).");
+                SaveWorld();
                 return;
             }
 

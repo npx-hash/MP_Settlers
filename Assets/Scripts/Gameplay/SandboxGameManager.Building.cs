@@ -717,13 +717,11 @@ namespace MPSettlers.Gameplay
 
         private void ShiftCategory(int delta)
         {
-            BuildCategory[] categories =
+            BuildCategory[] categories = GetAvailableBuildCategories();
+            if (categories.Length == 0)
             {
-                BuildCategory.Town,
-                BuildCategory.Farm,
-                BuildCategory.Food,
-                BuildCategory.Weapons
-            };
+                return;
+            }
 
             int currentIndex = Array.IndexOf(categories, selectedCategory);
             if (currentIndex < 0)

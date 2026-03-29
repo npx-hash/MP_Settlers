@@ -377,11 +377,19 @@ namespace MPSettlers.Gameplay
             GUILayout.Label("Build Catalog", headingStyle);
             GUILayout.Space(6f);
 
+            BuildCategory[] availableCategories = GetAvailableBuildCategories();
             GUILayout.BeginHorizontal();
-            DrawCategoryButton(BuildCategory.Town);
-            DrawCategoryButton(BuildCategory.Farm);
-            DrawCategoryButton(BuildCategory.Food);
-            DrawCategoryButton(BuildCategory.Weapons);
+            if (availableCategories.Length == 0)
+            {
+                GUILayout.Label("No build categories available.", smallMutedStyle);
+            }
+            else
+            {
+                foreach (BuildCategory category in availableCategories)
+                {
+                    DrawCategoryButton(category);
+                }
+            }
             GUILayout.EndHorizontal();
 
             GUILayout.Space(8f);
