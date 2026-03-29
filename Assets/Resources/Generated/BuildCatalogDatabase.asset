@@ -285,40 +285,6 @@ MonoBehaviour:
     renewableVisualMode: 3
     showGrowthLabel: 1
     seedOnNewWorld: 1
-  - id: Food:Fish
-    prefabName: Fish
-    displayName: Fish
-    category: 2
-    kind: 1
-    prefab: {fileID: 3828846876288801734, guid: 1c6865324f95c004293d5d1efe86d559, type: 3}
-    cost:
-      wood: 0
-      stone: 0
-      food: 1
-    pickupInventoryType: 1
-    renewableResourceType: 0
-    renewableYieldAmount: 0
-    renewableRegrowSeconds: 45
-    renewableVisualMode: 0
-    showGrowthLabel: 0
-    seedOnNewWorld: 0
-  - id: Food:Garlic
-    prefabName: Garlic
-    displayName: Garlic
-    category: 2
-    kind: 1
-    prefab: {fileID: 5987858285101769375, guid: b701910af56d089428c372aa6ba53383, type: 3}
-    cost:
-      wood: 0
-      stone: 0
-      food: 1
-    pickupInventoryType: 1
-    renewableResourceType: 0
-    renewableYieldAmount: 0
-    renewableRegrowSeconds: 45
-    renewableVisualMode: 0
-    showGrowthLabel: 0
-    seedOnNewWorld: 0
   - id: Weapons:Arrow_01
     prefabName: Arrow_01
     displayName: Arrow_01
